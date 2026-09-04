@@ -51,9 +51,7 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/MCMParadis/pylibs-stats"
 Documentation = "https://github.com/MCMParadis/pylibs-stats#readme"
-# TODO(author): add once the first release is minted, e.g.
-# DOI = "https://doi.org/10.5281/zenodo.<record>"
-# Keep in sync with CITATION.cff's `doi:` / `identifiers:` placeholders.
+DOI = "https://doi.org/10.5281/zenodo.22313354"
 
 [project.optional-dependencies]
 dev = [
