@@ -1,0 +1,54 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: pylibs-stats
+abstract: >-
+  Statistical processing of LIBS (Laser-Induced Breakdown Spectroscopy)
+  imaging data. Extracts named features from raw acquisitions, computes
+  one- and two-dimensional distribution statistics per feature, correlates
+  and regresses those statistics across samples against external sample
+  properties, and applies the fitted relationships back onto individual
+  images as quantification maps. Exposed as a command-line interface, a
+  small domain-specific language, and a Python API over one shared core.
+
+authors:
+  - family-names: "Michaud Paradis"
+    given-names: "Marie-Chloé"
+    orcid: "https://orcid.org/0009-0002-6138-9024"
+    affiliation: "Université de Montréal"
+  - family-names: "Chénier"
+    given-names: "Charles"
+    orcid: "https://orcid.org/0009-0006-4428-4836"
+    affiliation: "Université de Montréal"
+  - family-names: "Abbas"
+    given-names: "Hasan Omar"
+    orcid: "https://orcid.org/0009-0003-8352-2778"
+    affiliation: "Université de Montréal"
+  - family-names: "Doucet"
+    given-names: "François R."
+    affiliation: "ELEMISSION, Inc."
+  - family-names: "Özcan"
+    given-names: "Lütfü Ç."
+    affiliation: "ELEMISSION, Inc."
+  - family-names: "Dollé"
+    given-names: "Mickaël"
+    orcid: "https://orcid.org/0000-0002-8887-6730"
+    affiliation: "Université de Montréal"
+
+version: 1.0.0
+
+license: BSD-3-Clause
+repository-code: "https://github.com/MCMParadis/pylibs-stats"
+
+doi: "10.5281/zenodo.PLACEHOLDER-REPLACE-AFTER-FIRST-RELEASE"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.PLACEHOLDER-REPLACE-AFTER-FIRST-RELEASE"
+    description: "Concept DOI resolving to the latest release of pylibs-stats."
+
+keywords:
+  - laser-induced breakdown spectroscopy
+  - LIBS
+  - chemometrics
+  - distribution statistics
+  - bootstrap resampling

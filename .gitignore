@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# default pylibs project output directory
+/projects/
+
+# pipeline results (Zarr stores are a working format, never archived)
+results.zarr/
+
+# personal scratch/test scripts
+/codes/

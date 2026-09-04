@@ -1,0 +1,112 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pylibs-stats"
+version = "1.0.0"
+description = "Statistical processing of LIBS imaging data"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Marie-Chloé Michaud Paradis" },
+    { name = "Charles Chénier" },
+    { name = "Hasan Omar Abbas" },
+    { name = "François R. Doucet" },
+    { name = "Lütfü Ç. Özcan" },
+    { name = "Mickaël Dollé" },
+]
+keywords = [
+    "laser-induced breakdown spectroscopy",
+    "LIBS",
+    "chemometrics",
+    "distribution statistics",
+    "bootstrap resampling",
+]
+# No "License :: OSI Approved :: BSD License" classifier here on purpose:
+# PEP 639's `license` expression above supersedes those, and carrying both a
+# License-Expression and a License:: classifier risks a PyPI upload rejection.
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "pydantic>=2",
+    "typer>=0.12",
+    "numpy>=1.26",
+    "zarr>=3",
+    "matplotlib>=3.8",
+    "scipy>=1.11",
+]
+
+[project.urls]
+Repository = "https://github.com/MCMParadis/pylibs-stats"
+Documentation = "https://github.com/MCMParadis/pylibs-stats#readme"
+# TODO(author): add once the first release is minted, e.g.
+# DOI = "https://doi.org/10.5281/zenodo.<record>"
+# Keep in sync with CITATION.cff's `doi:` / `identifiers:` placeholders.
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+    "scipy-stubs",
+]
+ele = [
+    "libs_importer @ git+ssh://git@github.com/MCMParadis/elemission-importer.git@main",
+]
+
+[project.scripts]
+pylibs = "pylibs.interfaces.cli.app:app"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pylibs"]
+
+[tool.hatch.build.targets.sdist]
+# The 21-file example dataset (~520 MB) is distributed with the repository and
+# the Zenodo deposit, not the PyPI sdist: including it produced a 116 MB
+# archive, over PyPI's 100 MB per-file limit, so the upload is refused.
+#
+# The leading slash anchors this to the project root, and matters. A bare
+# "data/" also matches src/pylibs/core/reporting/data/, dropping logo.png --
+# and since `uv build` builds the wheel FROM the sdist, that removes the logo
+# from the wheel too, so every report's cover page fails on a missing resource.
+exclude = ["/data"]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]  # typer.Option(...) as a default is the standard Typer idiom
+
+[tool.ruff.lint.per-file-ignores]
+"examples/*.py" = ["F821"]  # DSL scripts use verb names injected at exec time
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["pylibs"]
+mypy_path = "src"
+strict = false
+
+[[tool.mypy.overrides]]
+module = "libs_importer"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
