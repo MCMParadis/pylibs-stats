@@ -40,10 +40,10 @@ version: 1.0.0
 license: BSD-3-Clause
 repository-code: "https://github.com/MCMParadis/pylibs-stats"
 
-doi: "10.5281/zenodo.PLACEHOLDER-REPLACE-AFTER-FIRST-RELEASE"
+doi: "10.5281/zenodo.22313354"
 identifiers:
   - type: doi
-    value: "10.5281/zenodo.PLACEHOLDER-REPLACE-AFTER-FIRST-RELEASE"
+    value: "10.5281/zenodo.22313354"
     description: "Concept DOI resolving to the latest release of pylibs-stats."
 
 keywords:
