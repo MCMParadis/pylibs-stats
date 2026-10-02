@@ -51,7 +51,7 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/MCMParadis/pylibs-stats"
 Documentation = "https://github.com/MCMParadis/pylibs-stats#readme"
-DOI = "https://doi.org/10.5281/zenodo.22313354"
+DOI = "https://doi.org/10.5281/zenodo.22313353"
 
 [project.optional-dependencies]
 dev = [
