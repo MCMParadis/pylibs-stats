@@ -538,12 +538,26 @@ def confidence_band_half_width(
     ssxx: float,
     residual_std: float,
     confidence: float = 0.95,
+    df: int | None = None,
 ) -> np.ndarray | float:
     """Half-width of the `confidence` confidence band for a simple linear
     regression's fitted line, at `x_query`, reproducible purely from the
     fit's own stored `n`/`x_mean`/`ssxx`/`residual_std` -- no per-scan data
-    needed. `df = n - 2` (two fitted parameters, slope and intercept)."""
-    t_crit = float(t.ppf(1 - (1 - confidence) / 2, df=n - 2))
+    needed.
+
+    `n` and the degrees of freedom are separate inputs because grouped
+    inference separates them. `n` is the total weight behind the fit, which
+    is the acquisition count: `residual_std` is per unit weight and `ssxx`
+    is the weighted sum of squares, so the standard error carries `1 / n`
+    either way. The degrees of freedom are the independent points, which is
+    the number of physical samples when acquisitions were grouped (see
+    `grouped_band_parameters`). Passing `n - 2` for both would widen the
+    band's `1/n` term and narrow its `t` multiplier at the same time.
+
+    `df=None` means `n - 2`, the ungrouped case and what a regression stored
+    before 1.0.1 needs."""
+    degrees = n - 2 if df is None else df
+    t_crit = float(t.ppf(1 - (1 - confidence) / 2, df=degrees))
     return t_crit * residual_std * np.sqrt(1 / n + (x_query - x_mean) ** 2 / ssxx)
 
 

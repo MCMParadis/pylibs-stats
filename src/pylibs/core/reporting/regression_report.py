@@ -92,7 +92,15 @@ def _regression_figure(
     x_curve = np.linspace(x_min, x_max, 300)
     y_curve = regression.slope * x_curve + regression.intercept
     half_width = confidence_band_half_width(
-        x_curve, regression.n, regression.x_mean, regression.ssxx, regression.residual_std
+        x_curve,
+        regression.n,
+        regression.x_mean,
+        regression.ssxx,
+        regression.residual_std,
+        # the independent points, which is the sample count when acquisitions
+        # were grouped. 0 means a regression stored before 1.0.1, which has no
+        # band_df and whose band was fitted over acquisitions anyway
+        df=regression.band_df or None,
     )
 
     equation_label = f"{regression.slope:.2e} · x + {regression.intercept:.2e}"
