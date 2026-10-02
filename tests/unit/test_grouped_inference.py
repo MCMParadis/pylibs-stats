@@ -92,8 +92,16 @@ def test_grouping_leaves_the_line_r_squared_and_mae_untouched():
 
 
 def test_band_uses_group_degrees_of_freedom_and_is_wider():
-    """Fewer independent points means a wider band. The t multiplier alone
-    accounts for most of it, and the degrees of freedom must be n_groups - 2."""
+    """The drawn band must equal ordinary least squares on the sample means.
+
+    Pinned against an independent reference rather than against itself: OLS
+    on the 7 means, t at n_groups - 2, and 1/7 in the standard error. The
+    call has to match the one the report makes -- `n` is the acquisition
+    count, because `residual_std` is per unit weight and `ssxx` is the
+    weighted sum of squares, so the total weight behind the fit is 21; only
+    the degrees of freedom are the sample count. Substituting n_groups for
+    `n` would fix the t multiplier and corrupt the standard error at the
+    same time, which is the error this test exists to exclude."""
     x, y, names = _design([3] * 7)
     grouped = fit_least_squares(x, y, 500, np.random.default_rng(SEED), names)
     ungrouped = fit_least_squares(x, y, 500, np.random.default_rng(SEED), None)
@@ -101,14 +109,46 @@ def test_band_uses_group_degrees_of_freedom_and_is_wider():
     assert grouped.band_df == 5  # 7 samples - 2
     assert ungrouped.band_df == 19  # 21 acquisitions - 2
 
-    at_mean = grouped.x_mean
-    wide = confidence_band_half_width(
-        at_mean, grouped.n_groups, grouped.x_mean, grouped.ssxx, grouped.residual_std
-    )
+    # the reference: a plain regression on the 7 sample means
+    groups = _group_indices(list(names), np.ones(x.size, dtype=bool))
+    group_x = np.array([x[rows].mean() for rows in groups])
+    group_y = np.array([y[rows].mean() for rows in groups])
+    reference_fit = linregress(group_x, group_y)
+    residuals = group_y - (reference_fit.slope * group_x + reference_fit.intercept)
+    reference_std = np.sqrt(np.sum(residuals**2) / (len(groups) - 2))
+    reference_mean = group_x.mean()
+    reference_ssxx = np.sum((group_x - reference_mean) ** 2)
+
+    for at in (group_x.min(), grouped.x_mean, group_x.max()):
+        drawn = confidence_band_half_width(
+            at,
+            grouped.n,
+            grouped.x_mean,
+            grouped.ssxx,
+            grouped.residual_std,
+            df=grouped.band_df,
+        )
+        reference = (
+            t.ppf(0.975, df=len(groups) - 2)
+            * reference_std
+            * np.sqrt(1 / len(groups) + (at - reference_mean) ** 2 / reference_ssxx)
+        )
+        assert drawn == pytest.approx(reference)
+
+    # and fewer independent points still means a wider band than the
+    # acquisition-level one it replaced
     narrow = confidence_band_half_width(
-        at_mean, ungrouped.n, ungrouped.x_mean, ungrouped.ssxx, ungrouped.residual_std
+        grouped.x_mean, ungrouped.n, ungrouped.x_mean, ungrouped.ssxx, ungrouped.residual_std
     )
-    assert wide > narrow
+    at_mean = confidence_band_half_width(
+        grouped.x_mean,
+        grouped.n,
+        grouped.x_mean,
+        grouped.ssxx,
+        grouped.residual_std,
+        df=grouped.band_df,
+    )
+    assert at_mean > narrow
 
 
 def test_band_parameters_match_a_hand_computed_weighted_fit():
