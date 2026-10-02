@@ -40,10 +40,10 @@ version: 1.0.1
 license: BSD-3-Clause
 repository-code: "https://github.com/MCMParadis/pylibs-stats"
 
-doi: "10.5281/zenodo.22313354"
+doi: "10.5281/zenodo.22313353"
 identifiers:
   - type: doi
-    value: "10.5281/zenodo.22313354"
+    value: "10.5281/zenodo.22313353"
     description: "Concept DOI resolving to the latest release of pylibs-stats."
 
 keywords:
