@@ -27,7 +27,12 @@ from pylibs.core.pipeline.bootstrap.compute import RatioRawData
 from pylibs.core.pipeline.bootstrap.csv_export import export_bootstrap_csv
 from pylibs.core.pipeline.metrics import METRIC_NAMES
 from pylibs.core.project.project import Project
-from pylibs.core.runs.checkpoint import CheckpointArrays, mark_done, pending_indices
+from pylibs.core.runs.checkpoint import (
+    DEFAULT_BATCH_SIZE,
+    CheckpointArrays,
+    CheckpointWriter,
+    pending_indices,
+)
 from pylibs.core.runs.executor import execute
 from pylibs.core.runs.partition import plan_shard
 
@@ -104,6 +109,7 @@ def run_bootstrap(
     n_workers: int = 1,
     batchsize: int | None = None,
     save_csv: bool = False,
+    checkpoint_batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> BootstrapRunResult:
     """Compute every not-yet-done iteration of `bootstrap_id`'s currently
     registered target for `sample_id` (resuming automatically; picking up an
@@ -234,10 +240,14 @@ def run_bootstrap(
         len(shard_indices),
     )
 
+    # batched writes, results before flags (see CheckpointWriter): the store
+    # write is parent-side and serial, so it is a fixed cost that no worker
+    # count reduces
+    writer = CheckpointWriter(arrays, batch_size=checkpoint_batch_size)
     exec_result = execute(
         shard_pending,
         work_fn=compute.compute_iteration,
-        on_result=lambda index, row: mark_done(arrays, index, row),
+        on_result=writer.add,
         n_processes=n_processes,
         initializer=compute.init_worker,
         initargs=(
@@ -253,6 +263,7 @@ def run_bootstrap(
             mask,
         ),
     )
+    writer.flush()
 
     n_done = int(np.asarray(arrays.completed[:]).sum())
     logger.info(

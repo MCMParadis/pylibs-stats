@@ -43,6 +43,9 @@ from pylibs.core.io.snapshot import new_timestamp as _new_timestamp
 from pylibs.core.io.snapshot import pack_snapshot_results as _pack_snapshot_results
 from pylibs.core.io.snapshot import use_snapshot_results as _use_snapshot_results
 from pylibs.core.io.store import RESULTS_DIRNAME, ResultsStore
+from pylibs.core.io.writers.libs_writer import load_array as _load_array
+from pylibs.core.io.writers.libs_writer import load_csv_matrix as _load_csv_matrix
+from pylibs.core.io.writers.libs_writer import write_libs as _write_libs
 from pylibs.core.logging import configure_console_logging, get_logger
 from pylibs.core.logging import set_debug_logging as _set_debug_logging
 from pylibs.core.pipeline.bootstrap.csv_export import export_bootstrap_csv as _export_bootstrap_csv
@@ -62,6 +65,15 @@ from pylibs.core.pipeline.regression import (
     FeatureRegression,
     compute_applied_regression,
     get_regression_algorithm,
+)
+from pylibs.core.pipeline.regression import (
+    format_p_value as _format_p_value,
+)
+from pylibs.core.pipeline.regression import (
+    format_permutation_mode as _format_permutation_mode,
+)
+from pylibs.core.pipeline.regression import (
+    format_sample_count as _format_sample_count,
 )
 from pylibs.core.pipeline.regression_run import run_regression_sweep
 from pylibs.core.pipeline.runner import PipelineBatchResult, PipelineResult
@@ -248,9 +260,20 @@ def _feature_regression_from_arrays(
         x_min=float(cast(float, attrs["x_min"])),
         x_max=float(cast(float, attrs["x_max"])),
         sample_names=cast(list[str], attrs["sample_names"]),
+        grouped=bool(attrs.get("grouped", False)),
+        n_groups=int(cast(int, attrs.get("n_groups", 0))),
+        n_acquisitions=int(cast(int, attrs.get("n_acquisitions", 0))),
+        balanced=bool(attrs.get("balanced", True)),
+        permutation_mode=str(attrs.get("permutation_mode", "sampled")),
+        n_permutations_used=int(cast(int, attrs.get("n_permutations_used", 0))),
+        band_df=int(cast(int, attrs.get("band_df", 0))),
+        inference_version=int(cast(int, attrs.get("inference_version", 1))),
         group_mean_x=cast(np.ndarray, group_mean_x_array[:]),
         group_mean_y=cast(np.ndarray, group_mean_y_array[:]),
         group_std_y=cast(np.ndarray, group_std_y_array[:]),
+        # stored since regressions were first written, but read back with a
+        # default so a group written without it still loads
+        n_permutations=int(cast(int, attrs.get("n_permutations", 0))),
     )
 
 
@@ -296,6 +319,106 @@ def set_debug_logging(enabled: bool) -> None:
     `convert_ele_to_libs`). See `core.logging.set_debug_logging`."""
     _set_debug_logging(enabled)
     configure_console_logging(enabled)
+
+
+def write_libs(
+    path: Path,
+    spectra,
+    wavelengths,
+    grid: tuple[int, int] | None = None,
+    coordinates=None,
+    step: tuple[float, float] | float | None = None,
+    units: str = "mm",
+    mask=None,
+    metadata: dict | None = None,
+    params: dict | None = None,
+    dtype: str = "float64",
+    order: str = "raster",
+    n_scans: int | None = None,
+) -> Path:
+    """Write spectra to `path` as a `.libs` sample file, the open format the
+    pipeline reads. No project or registry involved; the result registers
+    with `add_sample` like any other sample.
+
+    This is the general ingestion path: anything loadable into a NumPy array
+    -- ENVI, FITS, a CSV spectral matrix, an instrument export -- becomes a
+    processable sample through here, with no proprietary code anywhere. See
+    `docs/libs_format.md` for the format itself and `examples/conversion/`
+    for worked conversions.
+
+    `spectra` is a `(n_scans, n_pixels)` array, a memmap, or an iterable of
+    row blocks; with an iterable, `n_scans` is required, since the archive's
+    array header is written before the blocks arrive. Blocks are streamed
+    straight into the file, so peak memory is one block rather than the whole
+    scan. `wavelengths` is a strictly increasing 1D array.
+
+    Position comes from exactly one of `grid` (n_rows, n_cols) or
+    `coordinates` ((n_scans, 2) x/y positions on a regular lattice, from
+    which the grid and step are derived). `step` (one value, or (dy, dx))
+    with `units` gives the physical extent that makes maps read in
+    millimetres rather than pixels. `mask` marks which cells of a partially
+    scanned frame were measured.
+
+    `order` says how the incoming rows are arranged: `"raster"` (the
+    default) means plain row-major, and the writer reverses odd rows to
+    produce the serpentine order the format stores; `"serpentine"` means
+    they already are. Getting this wrong mirrors alternate rows of every
+    map, so it is explicit rather than guessed.
+
+    `params` is a complete params dict carried through unchanged (a
+    converted file's own metadata, say); `metadata` is merged on top and may
+    not set the geometry fields the writer derives. `dtype` is "float64" or
+    "float32". Returns `path`."""
+    return _write_libs(
+        Path(path),
+        spectra,
+        wavelengths,
+        grid=grid,
+        coordinates=coordinates,
+        step=step,
+        units=units,
+        mask=mask,
+        metadata=metadata,
+        params=params,
+        dtype=dtype,
+        order=order,
+        n_scans=n_scans,
+    )
+
+
+def load_csv_matrix(path: Path, x_column: str = "x", y_column: str = "y"):
+    """Read a CSV spectral matrix -- one row per pixel, coordinate columns
+    plus one column per wavelength, the header giving each column's
+    wavelength. Returns `(spectra, wavelengths, coordinates)`, ready to pass
+    to `write_libs`. See `io.writers.libs_writer.load_csv_matrix`."""
+    return _load_csv_matrix(Path(path), x_column=x_column, y_column=y_column)
+
+
+def load_array(path: Path, key: str | None = None):
+    """Read one array from a `.npy` file, or `key`'s member of a `.npz`.
+    A `.npy` is memory-mapped, so it can be handed straight to `write_libs`
+    without being read into memory."""
+    return _load_array(Path(path), key=key)
+
+
+def format_p_value(p_value: float, n_permutations: int = 0) -> str:
+    """Render a permutation p-value for display -- see
+    `pipeline.regression.format_p_value`. Re-exported here because the CLI
+    and DSL may only import from this facade, and both print p-values."""
+    return _format_p_value(p_value, n_permutations)
+
+
+def format_sample_count(regression) -> str:
+    """ "n = 7 samples (21 acquisitions)" when acquisitions were grouped for
+    inference, plain "n = 21" otherwise. Re-exported for the CLI and DSL,
+    which may only import from this facade."""
+    return _format_sample_count(regression)
+
+
+def format_permutation_mode(regression) -> str:
+    """How a stored p-value was obtained: "exact, 5040 permutations" when
+    every arrangement was enumerated, "sampled, 10000" otherwise."""
+    return _format_permutation_mode(regression)
 
 
 def create_project(
@@ -1069,6 +1192,7 @@ def compute_regressions(
     n_processes: int = 1,
     worker_index: int = 0,
     n_workers: int = 1,
+    group_by_sample_name: bool = True,
 ) -> RegressionsResult:
     """Fit `metric` (default `'Mean'`, one of `pipeline.metrics.METRIC_NAMES`)
     of every selected feature against every numeric column of `csv_path` (a
@@ -1107,9 +1231,21 @@ def compute_regressions(
     instead of overwriting each other.
 
     Each fit's `p_value` is a permutation-test p-value on its own residual
-    MAE (shuffle the pairing, refit, recompute MAE; fraction of shuffled
-    fits with a lower MAE than the real one), not an analytic test -- see
-    `pipeline.regression.fit_least_squares`. `n_permutations` (default
+    MAE (shuffle the pairing, refit, recompute MAE; `(b + 1) /
+    (n_permutations + 1)`, where `b` counts the shuffled fits whose MAE is
+    at most the real one's, so the value is never 0), not an analytic
+    test -- see
+    `pipeline.regression.fit_least_squares`.
+
+    `group_by_sample_name` (default True) makes the physical sample, not the
+    acquisition, the unit of inference. Several ablation layers of one
+    pellet share a property value and are not independent evidence about it,
+    so counting each as its own point is pseudoreplication. With it on, the
+    fitted line, R2 and MAE are unchanged -- still pooled over every
+    acquisition -- while the confidence band comes from the count-weighted
+    regression on the per-sample means at `n_groups - 2` degrees of freedom,
+    and the permutation test moves property values between whole samples.
+    It is a no-op when no sample name repeats. `n_permutations` (default
     10000) controls its iteration count; `random_seed` (default 0) makes it
     reproducible -- each (column, metric, feature) cell gets its own
     independent seed derived from `random_seed` and the cell's own index
@@ -1229,6 +1365,7 @@ def compute_regressions(
         n_processes=n_processes,
         worker_index=worker_index,
         n_workers=n_workers,
+        group_by_sample_name=group_by_sample_name,
     )
 
     logger.info(

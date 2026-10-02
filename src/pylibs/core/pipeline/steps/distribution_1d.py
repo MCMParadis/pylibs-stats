@@ -36,7 +36,7 @@ from pylibs.core.io.store import ResultsStore
 from pylibs.core.logging import get_logger
 from pylibs.core.pipeline.distributions import Distribution1D, compute_distribution_1d
 from pylibs.core.project.registry import Registry
-from pylibs.core.runs.executor import execute
+from pylibs.core.runs.executor import WorkerPool, execute
 
 logger = get_logger(__name__)
 
@@ -90,8 +90,12 @@ class Distribution1DStep:
     requires: str | None = "features"
     needs_reader = False
 
-    def __init__(self, n_processes: int = 1):
+    def __init__(self, n_processes: int = 1, pool: WorkerPool | None = None):
         self.n_processes = n_processes
+        # a pool shared with the other distribution step, when the pipeline
+        # runner built one -- worker startup is then paid once per pipeline
+        # call rather than once per step
+        self.pool = pool
 
     def is_done(self, store: ResultsStore, sample_id: str, registry: Registry) -> bool:
         features_array = store.get_features_array(sample_id)
@@ -139,6 +143,7 @@ class Distribution1DStep:
             work_fn=compute_one,
             on_result=on_result,
             n_processes=self.n_processes,
+            pool=self.pool,
             initializer=init_worker,
             initargs=(feature_ids, values_matrix),
         )

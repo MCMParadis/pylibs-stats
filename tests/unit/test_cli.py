@@ -16,9 +16,10 @@ import pytest
 from typer.testing import CliRunner
 
 from pylibs.core import api
-from pylibs.core.io.readers.libs_reader import write_libs_file
+from pylibs.core.io.writers.libs_writer import write_libs_file
 from pylibs.core.logging import LOG_FILENAME
 from pylibs.core.pipeline.metrics import METRIC_NAMES_2D
+from pylibs.core.pipeline.regression import _mae_permutation_p_value, fit_least_squares
 from pylibs.interfaces.cli.app import app
 
 runner = CliRunner()
@@ -716,6 +717,102 @@ def test_to_raster_masked_placement_and_guards():
         to_raster(np.arange(4.0), 3, 3, mask=mask)
     with pytest.raises(ReportError, match="Mask is"):
         to_raster(np.arange(5.0), 4, 4, mask=mask)
+
+
+def test_frame_shape_counts_pixels_or_intervals():
+    """Some headers count the intervals between pixels rather than the pixels."""
+    from pylibs.core.exceptions import ReportError
+    from pylibs.core.reporting.raster import frame_shape
+
+    assert frame_shape({"HeightPixels": 3, "WidthPixels": 4}, 12) == (3, 4)
+    # a 400x400 .ELE scan whose header says 399x399
+    assert frame_shape({"HeightPixels": 399, "WidthPixels": 399}, 160000) == (400, 400)
+    with pytest.raises(ReportError, match="neither a 3x4 raster nor a 4x5"):
+        frame_shape({"HeightPixels": 3, "WidthPixels": 4}, 13)
+    with pytest.raises(ReportError, match="no HeightPixels"):
+        frame_shape({"WidthPixels": 4}, 12)
+
+
+def test_interval_style_header_is_settled_at_ingest(tmp_path):
+    """Some instruments write HeightPixels/WidthPixels as the intervals
+    between pixels, so a 4x5 scan arrives as 3x4. The frame is resolved once,
+    when the sample is processed, and the stored params carry the real one --
+    so every consumer (maps, applied-regression maps, `local` bootstrap
+    resampling) reads a trustworthy value instead of re-deriving it."""
+    root = tmp_path / "proj"
+    wavelengths = np.linspace(200.0, 210.0, 60)
+    n_scans = 20  # a 4x5 frame
+    data = np.full((n_scans, len(wavelengths)), 10.0)
+    data[:, np.argmin(np.abs(wavelengths - 205.0))] = np.arange(n_scans) + 100.0
+    libs_path = tmp_path / "sample.libs"
+    write_libs_file(
+        libs_path,
+        data=data,
+        wavelengths=wavelengths,
+        params={"HeightPixels": 3, "WidthPixels": 4},  # intervals, not pixels
+    )
+    peak_table = tmp_path / "peaks.csv"
+    peak_table.write_text(
+        "element,id,peak,continuum,tol_peak,tol_continuum,_isdefault\nA,A205,205.0,,,,1\n"
+    )
+
+    api.create_project("demo", root=root)
+    api.use_peak_table("demo", peak_table, project_root=root)
+    api.add_sample("demo", libs_path, project_root=root)
+    api.add_feature("demo", "A205", project_root=root)
+    api.run_pipeline("demo", "sample001", project_root=root)
+
+    store = api.ResultsStore(root / "results.zarr")
+    params = store.get_raw_params("sample001")
+    assert (params["HeightPixels"], params["WidthPixels"]) == (4, 5)
+    # the header's own values are kept, so the correction is auditable
+    assert (params["HeightPixelsHeader"], params["WidthPixelsHeader"]) == (3, 4)
+
+    # and the report that used to raise "Can't reshape 20 values" now renders
+    result = runner.invoke(
+        app, ["project", "generate-feature-report", "demo", "sample001", "--root", str(root)]
+    )
+    assert result.exit_code == 0, result.output
+
+
+def test_a_mask_outranks_a_disagreeing_header(tmp_path):
+    """The mask carries one set cell per scan, which is checkable; the header
+    is the part known to be unreliable. So a mask that disagrees with the
+    header defines the frame rather than being dropped for disagreeing."""
+    root = tmp_path / "proj"
+    wavelengths = np.linspace(200.0, 210.0, 60)
+    mask = np.zeros((4, 5), dtype=bool)
+    mask[1:3, 1:4] = True  # 6 scanned cells in a 4x5 frame
+    n_scans = int(mask.sum())
+    data = np.full((n_scans, len(wavelengths)), 10.0)
+    data[:, np.argmin(np.abs(wavelengths - 205.0))] = np.arange(n_scans) + 100.0
+    libs_path = tmp_path / "sample.libs"
+    write_libs_file(
+        libs_path,
+        data=data,
+        wavelengths=wavelengths,
+        params={
+            "HeightPixels": 3,
+            "WidthPixels": 4,
+            "PixelAssignmentMatrix": mask.astype(int).tolist(),
+        },
+    )
+    peak_table = tmp_path / "peaks.csv"
+    peak_table.write_text(
+        "element,id,peak,continuum,tol_peak,tol_continuum,_isdefault\nA,A205,205.0,,,,1\n"
+    )
+
+    api.create_project("demo", root=root)
+    api.use_peak_table("demo", peak_table, project_root=root)
+    api.add_sample("demo", libs_path, project_root=root)
+    api.add_feature("demo", "A205", project_root=root)
+    api.run_pipeline("demo", "sample001", project_root=root)
+
+    store = api.ResultsStore(root / "results.zarr")
+    params = store.get_raw_params("sample001")
+    assert (params["HeightPixels"], params["WidthPixels"]) == (4, 5)
+    # the mask survived rather than being discarded for disagreeing
+    assert store.get_mask_array("sample001") is not None
 
 
 def test_masked_sample_report_workflow(tmp_path):
@@ -2586,3 +2683,87 @@ def test_generate_feature_report_needs_the_projects_peak_table(tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert (root / "reports").exists()
+
+
+# --- permutation p-value: corrected estimator --------------------------------
+# A permutation p-value is (b + 1) / (N + 1), counting the unpermuted pairing
+# itself, so it can never be 0. These exercise the estimator and the display
+# rule for its floor directly, since a CLI workflow can only reach them
+# through whatever the data happens to produce.
+
+
+def test_permutation_p_value_is_never_zero_and_counts_ties():
+    """Perfectly collinear data: no permutation can beat the real fit, so b
+    counts only ties and the result sits exactly on the floor."""
+    x = np.arange(12, dtype=float)
+    y = 3.0 * x + 1.0
+    n_permutations = 199
+
+    fit = fit_least_squares(x, y, n_permutations, np.random.default_rng(0))
+
+    assert fit is not None
+    assert fit.p_value > 0.0
+    assert fit.p_value == pytest.approx(1.0 / (n_permutations + 1))
+
+
+def test_permutation_p_value_counts_ties_against_the_fit():
+    """Two points always fit exactly, so every permutation's residual MAE is
+    0.0 -- identical to the unpermuted one. Counting ties makes every
+    permutation evidence against the fit and p reaches 1.0; a strict "<"
+    would discard all of them and report the floor instead, which is the
+    opposite conclusion.
+
+    Goes at the estimator rather than through `fit_least_squares`, which
+    rejects degenerate input before it gets this far."""
+    x = np.array([0.0, 1.0])
+    y = np.array([3.0, 7.0])
+    n_permutations = 99
+
+    p_value = _mae_permutation_p_value(x, y, 0.0, n_permutations, np.random.default_rng(0))
+
+    assert p_value == pytest.approx(1.0)
+
+
+def test_permutation_p_value_endpoints_follow_the_corrected_formula():
+    """Both ends of (b + 1) / (N + 1), pinned by an observed MAE no
+    permutation can reach and one every permutation reaches."""
+    rng_args = (
+        np.arange(8, dtype=float),
+        np.arange(8, dtype=float) * 2.0 + 1.0,
+    )
+    n_permutations = 49
+
+    nothing_beats_it = _mae_permutation_p_value(
+        *rng_args, 0.0, n_permutations, np.random.default_rng(0)
+    )
+    everything_beats_it = _mae_permutation_p_value(
+        *rng_args, np.inf, n_permutations, np.random.default_rng(0)
+    )
+
+    assert nothing_beats_it == pytest.approx(1.0 / (n_permutations + 1))
+    assert everything_beats_it == pytest.approx(1.0)
+
+
+def test_permutation_p_value_is_a_fraction_for_unrelated_data():
+    """Noise unrelated to x lands strictly between the floor and 1, so the
+    estimator is not merely clamped at its bounds."""
+    rng = np.random.default_rng(7)
+    x = np.arange(40, dtype=float)
+    y = rng.normal(size=40)
+    n_permutations = 999
+
+    fit = fit_least_squares(x, y, n_permutations, np.random.default_rng(1))
+
+    assert fit is not None
+    assert 1.0 / (n_permutations + 1) < fit.p_value < 1.0
+
+
+def test_p_value_at_the_floor_is_shown_as_an_upper_bound():
+    """At the floor the value means "smaller than this test resolves", so it
+    prints as a bound rather than as an estimate."""
+    assert api.format_p_value(1.0 / 10001, 10000) == "p < 1.0e-04"
+    assert api.format_p_value(1.0 / 1001, 1000) == "p < 1.0e-03"
+    # anything above the floor prints as a value
+    assert api.format_p_value(0.0432, 10000) == "p = 4.32e-02"
+    # an unknown permutation count cannot locate the floor, so it prints plain
+    assert api.format_p_value(1.0 / 10001, 0) == "p = 1.00e-04"

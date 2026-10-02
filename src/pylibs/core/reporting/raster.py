@@ -15,6 +15,9 @@ unscanned cells left NaN. Without a mask -- the norm for a full rectangular
 import numpy as np
 
 from pylibs.core.exceptions import ReportError
+from pylibs.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def serpentine_positions(mask: np.ndarray) -> np.ndarray:
@@ -67,6 +70,55 @@ def to_raster(
     grid = np.full((n_rows, n_cols), np.nan, dtype=float)
     grid[positions[:, 0], positions[:, 1]] = values
     return grid
+
+
+def frame_shape(params: dict, n_values: int, sample_id: str = "") -> tuple[int, int]:
+    """The `(n_rows, n_cols)` a full scan of `n_values` fills, from the raw
+    file's `HeightPixels`/`WidthPixels`.
+
+    Some instruments write those two as the number of *intervals* between
+    pixels rather than the number of pixels, so a 400x400 scan is recorded as
+    399x399. When the header's own product doesn't account for the scans but
+    `(h + 1) * (w + 1)` does, the larger frame is the real one. The two can
+    never both match: `h*w = (h+1)(w+1)` has no positive solution.
+
+    Called once per sample, at ingest (`SpectrumStatsStep`), which stores the
+    resolved pair so no later consumer has to repeat the guess -- see that
+    step for why this belongs there rather than at every read. Reinterpreting
+    a header is logged, since nothing else would record that the file said one
+    thing and pylibs concluded another.
+
+    Not for a partially scanned sample: its scan count is smaller than its
+    frame by construction, so its `PixelAssignmentMatrix` is the authority on
+    the shape and this would only raise.
+    """
+    if "HeightPixels" not in params or "WidthPixels" not in params:
+        raise ReportError("Raw file params have no HeightPixels/WidthPixels")
+    try:
+        n_rows, n_cols = int(params["HeightPixels"]), int(params["WidthPixels"])
+    except (TypeError, ValueError) as exc:
+        raise ReportError(
+            "HeightPixels/WidthPixels are not whole numbers: "
+            f"{params['HeightPixels']!r}x{params['WidthPixels']!r}"
+        ) from exc
+    if n_rows * n_cols == n_values:
+        return n_rows, n_cols
+    if (n_rows + 1) * (n_cols + 1) == n_values:
+        logger.info(
+            "%sheader says %dx%d but %d scan(s) fill %dx%d -- reading those as the intervals "
+            "between pixels, not the pixels",
+            f"Sample {sample_id!r}: " if sample_id else "",
+            n_rows,
+            n_cols,
+            n_values,
+            n_rows + 1,
+            n_cols + 1,
+        )
+        return n_rows + 1, n_cols + 1
+    raise ReportError(
+        f"{n_values} values fill neither a {n_rows}x{n_cols} raster nor a "
+        f"{n_rows + 1}x{n_cols + 1} one"
+    )
 
 
 def resolve_physical_extent(

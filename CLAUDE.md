@@ -71,23 +71,63 @@ src/pylibs/
     runs/                # generic resumable/checkpointed execution -- knows nothing about
                         # bootstrap, features, or LIBS data; bootstrap is its first consumer
       checkpoint.py       # results + completed zarr arrays, both chunk-size-1 along the
-                          # iteration axis; mark_done() writes results before flipping
-                          # completed -- a crash between the two leaves the slot pending, not
-                          # falsely done; get_or_create_checkpoint_arrays()/extend
+                          # iteration axis; get_or_create_checkpoint_arrays()/extend;
+                          # mark_done() writes one slot, CheckpointWriter batches
+                          # DEFAULT_BATCH_SIZE=50 of them (batch_size=1 restores
+                          # write-per-iteration).
+                          # INVARIANT: results are always written before their completion
+                          # flags, per slot and per batch alike. Flip the order and an
+                          # interruption between the two marks iterations done whose results
+                          # were never stored, so a resumed run silently reads stale data
+                          # instead of recomputing them. Chunk size stays 1 so shard processes
+                          # can write interleaved indices without contending.
+                          # Why batched: see CHANGELOG.md 1.0.1
       partition.py         # plan_shard(): round-robin split of a run's iterations across
                             # separately-invoked processes -- MUST shard the static full
                             # range, never a dynamically-shrinking pending_indices() result
                             # (see the module docstring for the exact bug that causes)
-      executor.py           # execute(): sequential or ProcessPoolExecutor (spawn context);
-                            # on_result always runs in the calling process, so subprocess
-                            # workers never touch the results store themselves;
+      executor.py           # execute(): sequential or WorkerPool (ProcessPoolExecutor, spawn
+                            # context), optionally an existing one via `pool=` -- the caller
+                            # owns it and must close() it, which also removes the state files
+                            # below. on_result always runs in the calling process, so
+                            # subprocess workers never touch the results store themselves;
                             # resolve_n_processes(n) -- n<=0 resolves to every CPU available
-                            # to this process, shared by every n_processes-taking entry point
+                            # to this process, shared by every n_processes-taking entry point.
+                            # INVARIANT: a work group's read-only inputs travel out of band
+                            # through a state file (_load_group/_dispatch), never as the
+                            # pool's own initializer/initargs. Pass them as initargs again and
+                            # the parent blocks on each worker's spawn pipe in turn, making
+                            # startup linear in the worker count instead of concurrent.
+                            # Why, with the before/after measurements:
+                            # CHANGELOG.md 1.0.1
     io/
       reader.py          # LibsReader Protocol + get_reader() dispatch by file extension
-      readers/           # libs_reader.py (.libs, built-in), ele_reader.py (.ELE, needs libs_importer)
-      convert.py          # convert_ele_to_libs(): reads a whole .ELE file and writes it out as a
-                          # self-contained .libs archive (no project/registry involved)
+      readers/           # libs_reader.py (.libs, built-in), ele_reader.py (.ELE, needs libs_importer).
+                          # A .libs file's members are stored UNCOMPRESSED, so libs_reader
+                          # memory-maps `data` at its offset inside the zip rather than loading
+                          # the archive -- iter_window then faults in one batch at a time and a
+                          # scan larger than RAM streams from disk, like the .ELE reader. A
+                          # compressed `data` member (nothing here writes one) falls back to
+                          # being read whole
+      writers/            # libs_writer.py: the ONLY place a .libs file is produced, and the
+                          # general ingestion path -- anything loadable into a NumPy array
+                          # becomes a processable sample through api.write_libs, with no
+                          # proprietary step. Spectra may be an array, a memmap, or an iterable
+                          # of row blocks; blocks stream straight into the zip entry (.npy
+                          # header first, then each block's bytes) so peak memory is one block
+                          # and no temporary file is involved. Stores serpentine order, so
+                          # `order="raster"` (the default) reverses odd rows on the way in --
+                          # getting that wrong mirrors alternate rows of every map. `params` is
+                          # a caller's complete dict carried through unchanged apart from the
+                          # derived geometry fields; `metadata` is curated and may not set them
+                          # at all. write_libs_file is the raw primitive beneath it (no
+                          # validation, no geometry, no order conversion), for a caller that
+                          # already holds a finished params dict and for tests that need
+                          # deliberately sparse metadata. load_csv_matrix()/load_array() read
+                          # the CSV-matrix and .npy/.npz inputs the CLI accepts
+      convert.py          # convert_ele_to_libs(): streams a .ELE file through write_libs into a
+                          # self-contained .libs archive (no project/registry involved), so
+                          # there is one writer and peak memory is one batch
       store.py           # ResultsStore: zarr v3 results.zarr, one group per sample_id; bulky
                           # array-valued raw params (wavelengths/detectors/mask) each get their
                           # own array, since set_raw_params keeps only scalar entries.
@@ -152,10 +192,16 @@ src/pylibs/
                            # just "does output exist" -- raw sample data still can't be
                            # reprocessed in place, but this narrower case now is
       runner.py           # run_pipeline(): streams a sample through every Step, in a fixed order
-                           # that already satisfies `requires` -- no topological sort;
+                           # that already satisfies `requires` -- no topological sort. With
+                           # n_processes > 1 it builds ONE core.runs.executor.WorkerPool for
+                           # the whole call and hands it to both distribution steps, so
+                           # per-worker startup is paid once rather than once per step; closed
+                           # in a finally. The sequential path builds no pool at all;
                            # run_pipeline_batch(): many samples in one call, sharded via
                            # core.runs.partition/executor (worker_index/n_workers across
-                           # separately-invoked processes, n_processes as an in-process pool)
+                           # separately-invoked processes, n_processes as an in-process pool --
+                           # already one pool for the whole batch, with each sample's own
+                           # pipeline running at n_processes=1 so the two levels don't nest)
       metrics.py           # every metric's actual math, 1D and 2D, and only there -- see its own
                             # module docstring for "how to add a metric". METRIC_NAMES_1D/_2D name
                             # vocabulary + feature_metric_values() (merges a Distribution1D's and
@@ -163,6 +209,10 @@ src/pylibs/
       distributions.py      # Distribution1D/Distribution2D (siblings, not parent/child) + their
                             # compute_distribution_1d/2d orchestrators, which build a histogram
                             # and loop metrics.py's registries to fill `metrics: dict[str, float]`
+                            # (`window="skew"`, the default, bins the skew-adjusted fence below;
+                            # `"full"` bins the data's own min..max, for a quantity whose range
+                            # is meaningful rather than estimated and whose rare extremes are
+                            # the point -- metrics from raw values are identical either way)
                             # (`@property` wrappers like `.gini`/`.mean` read straight out of it).
                             # Both 1D (histogram/color scale) and 2D (each side's own marginal,
                             # for panel B's joint-density plot) window via skew_adjusted_bounds()/
@@ -201,9 +251,22 @@ src/pylibs/
                              # denominator (ratio_components/) -- the one place either is ever
                              # evaluated from the raw spectrum, so Distribution2DStep/bootstrap just
                              # read it back instead of re-streaming/re-evaluating themselves
-        spectrum_stats.py   # SpectrumStatsStep: sample-wide min/max/mean spectrum
+        spectrum_stats.py   # SpectrumStatsStep: sample-wide min/max/mean spectrum; also caches
+                             # the scanned-cell mask and settles the raster frame.
+                             # INVARIANT: the frame is resolved here, once, against this
+                             # sample's own scan count, and the resolved HeightPixels/
+                             # WidthPixels are what get stored (the header's own pair is kept
+                             # as HeightPixelsHeader/WidthPixelsHeader). Some instruments count
+                             # the intervals between pixels rather than the pixels, so a 400x400
+                             # scan arrives as 399x399; let each consumer re-derive that and
+                             # `local` bootstrap resampling silently draws from a wrongly shaped
+                             # raster. A mask outranks a disagreeing header -- it carries one set
+                             # cell per scan, which is checkable, while the header is the
+                             # unreliable part. Why: CHANGELOG.md 1.0.1
         distribution_1d.py  # Distribution1DStep: per-feature 1D metrics (needs features);
-                             # n_processes parallelizes across a sample's own features
+                             # n_processes parallelizes across a sample's own features, into
+                             # the WorkerPool run_pipeline shares between both distribution
+                             # steps when it built one
         distribution_2d.py  # Distribution2DStep: per-ratio-feature 2D metrics (reads
                              # ratio_components from the store, needs features -- no reader
                              # stream); n_processes parallelizes across ratio features likewise
@@ -269,7 +332,10 @@ expressions), a `peak_table.csv` (the project's own copy of a peak table, put th
 written by the pipeline), and a `pylibs.log` (every log message emitted while this project was
 the active one, at INFO level by default or DEBUG with the CLI's `--debug` flag -- see
 `configure_project_logging`). A **sample**
-is one raw LIBS file (`.libs` or `.ELE`), registered either individually (`add_sample`) or a whole
+is one raw LIBS file (`.libs` or `.ELE`; `.libs` is a plain uncompressed npz archive holding
+`data`/`wavelengths`/`params` -- see `docs/libs_format.md` for the written specification, and
+`api.write_libs` for converting anything else into one), registered either individually
+(`add_sample`) or a whole
 directory at a time (`add_samples_from_dir`, which derives each file's `sample_name` from its name
 via a `filename_scheme` template, keeps the full stem as `sample_stem`, and stores the template's
 other fields as `name_parts`; a file the template can't parse is logged and skipped); a **feature**
@@ -439,10 +505,27 @@ per-scan data re-read -- and a per-physical-`sample_name` grouped summary (mean_
 used only for plotting, not for the fit itself, in `results.zarr`'s top-level
 `regressions/<column>/<metric>/<feature_id>/` group -- `metric` is an explicit path segment (not
 just an attribute) specifically so the *same* feature can hold a regression under every metric
-simultaneously. `p_value` is a permutation test on the fit's own residual `mae` (shuffle the
-pairing, refit, recompute MAE; fraction of shuffled fits with a lower MAE than the real one, over
-`n_permutations`, default 10000, deterministic via `random_seed`, default 0), not
-`scipy.stats.linregress`'s analytic p-value. Pruning is scoped to one (column, metric) subtree: a
+simultaneously. **INVARIANT: the physical sample, not the acquisition, is the unit of inference** when
+`group_by_sample_name` (default True) is on and sample names repeat -- several ablation layers
+of one pellet are not independent evidence about it. The *line itself is unchanged*: slope,
+intercept, `pearson_r`, `r_squared` and `mae` stay pooled least squares over every acquisition.
+Only the band and the p-value change unit. The band comes from the acquisition-count-weighted
+regression on the per-sample means at `n_groups - 2` degrees of freedom (`grouped_band_
+parameters`), which reproduces the pooled line exactly -- because the property value is constant
+within a sample -- so it stays centred on the line drawn in balanced and unbalanced designs
+alike; the weighting assumes group-mean precision proportional to acquisition count and so
+ignores between-sample variance when counts differ. The permutation test moves values between
+whole groups (`_grouped_mae_permutation_p_value`), and enumerates every arrangement exactly when
+`n_groups! <= n_permutations` (7 samples = 5040, so the bundled example is exact). Revert either
+and the band narrows and p shrinks without more having been measured. `inference_version` (2)
+is stored on every regression so pre-change results are identifiable. `p_value` is a permutation
+test on the fit's own residual `mae` (shuffle the
+pairing, refit, recompute MAE; `(b + 1) / (n_permutations + 1)`, where `b` counts the shuffled
+fits whose MAE is at most the real one's -- ties included, and the unpermuted pairing counted as
+one of the arrangements, so the value is never 0 and its floor is `1 / (n_permutations + 1)`;
+`n_permutations` default 10000, deterministic via `random_seed`, default 0), not
+`scipy.stats.linregress`'s analytic p-value. `api.format_p_value` renders a value sitting on that
+floor as `p < 1.0e-04` rather than as an estimate, and every interface prints it through that. Pruning is scoped to one (column, metric) subtree: a
 feature stored under a metric being fit this call that's no longer in a narrower `select_features`
 is removed; every other metric's own features are untouched -- so regressing different metrics for
 the same column (e.g. one call's `"Mean"`, a later call's `"Median"`, or one `metric=None` sweep)
@@ -540,16 +623,27 @@ iteration's metrics -- including not-yet-computed ones, as blank cells -- to a f
 - `.ELE` support depends on the private `libs_importer` package (`pip install pylibs[ele]`, needs
   SSH access to a private repo) -- `pylibs` must still work fully without it for `.libs` files.
 - `examples/` scripts run against real data in `data/` (e.g. `data/dataset1/sample1_1.libs`), not
-  toy fixtures -- there's no separate `examples/data/`.
+  toy fixtures -- there's no separate `examples/data/`. The exception is `examples/conversion/`,
+  which shows ENVI/FITS/CSV-matrix ingestion through `api.write_libs`: those need source files in
+  formats this repo doesn't ship, so the CSV one synthesises its own and the other two take a path.
+  They import `spectral`/`astropy`, which are NOT pylibs dependencies and are used only there --
+  no ENVI/FITS/SPC reader belongs in `core/`, since `write_libs` is the supported way in.
 - The test suite is deliberately small (`tests/unit/test_expression.py` for the feature-expression
   parser, `tests/unit/test_cli.py` for dense CLI-integration workflow tests, plus `tests/integration/`
   for concurrency) -- CLI-level happy-path/error-boundary coverage is the primary safety net, not a
   `test_<module>.py` per source file. Don't reintroduce that per-module pattern or re-add direct
   numeric-correctness tests for statistics/correlation/regression/bootstrap math; extend the
   existing CLI workflow tests instead, or ask first if a change seems to call for a new kind of
-  test.
+  test. Three unit files are deliberate exceptions, each holding a guarantee a workflow test
+  structurally cannot express -- a numerical identity, or a property of a written file:
+  `test_distributions.py` (metric/property agreement, histogram windowing),
+  `test_libs_writer.py` (round trip, chunked == in-memory, raster->serpentine putting values
+  back unmirrored, the memory-mapped reader matching a full load) and
+  `test_grouped_inference.py` (the weighted group-means line equalling the pooled one, the
+  band's degrees of freedom, exact vs sampled permutations).
 - `tests/integration/` files are named per *scenario*, not per module -- `test_bootstrap_concurrent`,
-  `test_run_pipeline_batch_concurrent`, `test_registry_concurrent` -- and hold what a CLI workflow
+  `test_run_pipeline_batch_concurrent`, `test_registry_concurrent`, `test_parallel_execution` --
+  and hold what a CLI workflow
   test structurally cannot express: several real OS processes contending for one artifact. Each
   races something specific (a shared zarr group, a shared registry.json). A concurrency test that
   can pass without the contention actually happening is worse than none, so each one asserts that

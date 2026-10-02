@@ -25,7 +25,7 @@ from pylibs.core.pipeline.steps.distribution_2d import Distribution2DStep
 from pylibs.core.pipeline.steps.features import FeatureStep
 from pylibs.core.pipeline.steps.spectrum_stats import SpectrumStatsStep
 from pylibs.core.project.project import Project
-from pylibs.core.runs.executor import execute
+from pylibs.core.runs.executor import WorkerPool, execute, resolve_n_processes
 from pylibs.core.runs.partition import plan_shard
 
 logger = get_logger(__name__)
@@ -73,11 +73,16 @@ def run_pipeline(
 
     store = ResultsStore(project_root / RESULTS_DIRNAME)
     table = load_project_peak_table(project_root)
+    # One pool for the whole call, shared by both distribution steps: worker
+    # startup is a per-process import, so building a pool per step paid it
+    # twice. Only created when there is actually more than one worker; the
+    # sequential path never builds one.
+    pool = WorkerPool(n_processes) if resolve_n_processes(n_processes) > 1 else None
     steps: list[Step] = [
         FeatureStep(table),
         SpectrumStatsStep(),
-        Distribution1DStep(n_processes),
-        Distribution2DStep(n_processes),
+        Distribution1DStep(n_processes, pool=pool),
+        Distribution2DStep(n_processes, pool=pool),
     ]
 
     # is_done() is re-checked immediately before each step, not all upfront --
@@ -88,16 +93,20 @@ def run_pipeline(
     reader: LibsReader | None = None
     ran: list[str] = []
     skipped: list[str] = []
-    for step in steps:
-        if step.is_done(store, sample_id, project.registry):
-            skipped.append(step.name)
-            logger.info("%s already computed for sample %r -- skipping", step.name, sample_id)
-            continue
-        if step.needs_reader and reader is None:
-            reader = get_reader(sample.path, capdata=capdata, batchsize=batchsize)
-        logger.debug("Running step %r for sample %r", step.name, sample_id)
-        step.run(reader, sample_id, store, project.registry)
-        ran.append(step.name)
+    try:
+        for step in steps:
+            if step.is_done(store, sample_id, project.registry):
+                skipped.append(step.name)
+                logger.info("%s already computed for sample %r -- skipping", step.name, sample_id)
+                continue
+            if step.needs_reader and reader is None:
+                reader = get_reader(sample.path, capdata=capdata, batchsize=batchsize)
+            logger.debug("Running step %r for sample %r", step.name, sample_id)
+            step.run(reader, sample_id, store, project.registry)
+            ran.append(step.name)
+    finally:
+        if pool is not None:
+            pool.close()
 
     results_path = store.root / sample_id / "features"
     if ran:

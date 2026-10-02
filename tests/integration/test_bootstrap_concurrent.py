@@ -19,8 +19,8 @@ import pytest
 import zarr
 
 from pylibs.core import api
-from pylibs.core.io.readers.libs_reader import write_libs_file
 from pylibs.core.io.store import BOOTSTRAP_GROUP, RESULTS_DIRNAME, ResultsStore
+from pylibs.core.io.writers.libs_writer import write_libs_file
 from pylibs.core.pipeline.metrics import METRIC_NAMES
 
 N_WORKERS = 3

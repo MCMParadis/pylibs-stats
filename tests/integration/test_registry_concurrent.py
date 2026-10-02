@@ -34,7 +34,7 @@ from pathlib import Path
 import numpy as np
 
 from pylibs.core import api
-from pylibs.core.io.readers.libs_reader import write_libs_file
+from pylibs.core.io.writers.libs_writer import write_libs_file
 from pylibs.core.project.registry import Registry
 
 N_WRITES = 150

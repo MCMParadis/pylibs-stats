@@ -23,6 +23,8 @@ regression's own stored `algorithm`, so a future non-linear algorithm adds
 one fit function plus one apply function plus one entry in each registry.
 """
 
+import itertools
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -35,6 +37,106 @@ from pylibs.core.pipeline.distributions import Distribution1D, compute_distribut
 MIN_SAMPLES_FOR_REGRESSION = 3
 
 
+INFERENCE_VERSION = 2
+"""Which inference rules produced a stored regression.
+
+1: p as the strict fraction of shuffled fits beating the real one (could be
+   exactly 0), band and permutations over acquisitions.
+2: p as (b + 1) / (N + 1) with ties counted, and -- when grouping is on and
+   sample names repeat -- the band from the count-weighted group means at
+   n_groups - 2 degrees of freedom, with permutations over whole groups.
+
+Stored on every regression so results from either era can be told apart
+without guessing from their values.
+"""
+
+
+def _group_indices(sample_names: list[str], mask: np.ndarray) -> list[np.ndarray]:
+    """Row indices of each distinct sample name, over the fit's own finite
+    rows, in first-appearance order. One entry per physical sample."""
+    order: dict[str, list[int]] = {}
+    position = 0
+    for name, keep in zip(sample_names, mask, strict=True):
+        if keep:
+            order.setdefault(name, []).append(position)
+            position += 1
+    return [np.asarray(rows) for rows in order.values()]
+
+
+def _fit_slope_intercept(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Closed-form OLS for many y vectors against one x, vectorized."""
+    x_centered = x - x.mean()
+    sxx = float(np.sum(x_centered**2))
+    y_mean = y.mean(axis=-1)
+    slope = (y - y_mean[..., None]) @ x_centered / sxx
+    return slope, y_mean - slope * x.mean()
+
+
+def _grouped_mae_permutation_p_value(
+    x: np.ndarray,
+    y: np.ndarray,
+    observed_mae: float,
+    groups: list[np.ndarray],
+    n_permutations: int,
+    rng: np.random.Generator,
+) -> tuple[float, str, int]:
+    """Permutation p-value with whole samples as the unit.
+
+    A property value belongs to a physical sample, not to one ablation
+    layer, so the null must move it between samples and carry every
+    acquisition of that sample with it. Permuting acquisitions instead
+    treats each layer as independent evidence, which is the
+    pseudoreplication this exists to avoid: it makes the null far easier to
+    beat and the p-value correspondingly smaller.
+
+    Returns `(p_value, mode, n_used)`. When `n_groups!` is at most
+    `n_permutations` every arrangement is enumerated ("exact"), and the
+    p-value is the exact share of arrangements whose refit MAE is at most
+    the real one's, the identity arrangement included -- no `+1` correction
+    is needed or applied, because nothing is being sampled. Otherwise
+    arrangements are drawn at random ("sampled") and the corrected
+    `(b + 1) / (n_permutations + 1)` applies as usual."""
+    n_groups = len(groups)
+    # one property value per sample, and where each row's value comes from
+    per_group = np.array([x[rows][0] for rows in groups])
+    row_group = np.empty(x.size, dtype=int)
+    for index, rows in enumerate(groups):
+        row_group[rows] = index
+
+    total = math.factorial(n_groups)
+    if total <= n_permutations:
+        arrangements = np.array(list(itertools.permutations(range(n_groups))))
+        mode, n_used = "exact", total
+    else:
+        arrangements = np.stack([rng.permutation(n_groups) for _ in range(n_permutations)])
+        mode, n_used = "sampled", n_permutations
+
+    # x moves, y stays: permuting either gives the same null, and moving the
+    # shorter per-group vector keeps this one matrix build
+    x_perm = per_group[arrangements][:, row_group]  # (n_arrangements, n_rows)
+    x_mean = x_perm.mean(axis=1, keepdims=True)
+    x_centered = x_perm - x_mean
+    sxx = np.sum(x_centered**2, axis=1)
+    y_mean = y.mean()
+    slope = (x_centered @ (y - y_mean)) / sxx
+    intercept = y_mean - slope * x_mean[:, 0]
+    predicted = slope[:, None] * x_perm + intercept[:, None]
+    permuted_mae = np.mean(np.abs(y[None, :] - predicted), axis=1)
+
+    # A tie has to survive being recomputed. The observed MAE came from
+    # scipy's fit and these come from the vectorized one above, so the
+    # identity arrangement's MAE can differ from it in the last few bits.
+    # Comparing exactly would then drop the very arrangement that guarantees
+    # a non-zero p-value, and the exact branch would report 0.
+    tolerance = abs(observed_mae) * 1e-9 + np.finfo(float).tiny
+    b = int(np.count_nonzero(permuted_mae <= observed_mae + tolerance))
+    if mode == "exact":
+        # the identity arrangement is one of the enumerated ones and ties with
+        # itself, so b >= 1 and the p-value has a floor of 1 / n_groups!
+        return max(b, 1) / total, mode, n_used
+    return (b + 1) / (n_permutations + 1), mode, n_used
+
+
 def _mae_permutation_p_value(
     x: np.ndarray,
     y: np.ndarray,
@@ -43,13 +145,28 @@ def _mae_permutation_p_value(
     rng: np.random.Generator,
 ) -> float:
     """Refits OLS on `n_permutations` shuffled pairings of (x, y) and
-    returns the fraction whose residual MAE is strictly lower than
-    `observed_mae`. Closed-form OLS (not `scipy.stats.linregress` per
-    iteration -- 10000 calls x potentially hundreds of correlation cells
-    would be far too slow): shuffling y only reorders it, so its own
-    mean/variance -- and x's -- are identical across every permutation;
-    only the pairing changes, letting slope/intercept for every permutation
-    be computed as one vectorized matrix-vector product."""
+    returns the corrected permutation p-value
+
+        p = (b + 1) / (n_permutations + 1)
+
+    where `b` counts the permutations whose residual MAE is at most
+    `observed_mae` -- ties included, since a permutation that matches the
+    real fit is evidence against it, not for it.
+
+    Both the +1 terms and the tie counting matter. The unpermuted pairing is
+    itself one of the arrangements being tested, so counting it puts a floor
+    of `1 / (n_permutations + 1)` on the result: a permutation p-value can
+    never be 0, and reporting 0 would claim more resolution than the number
+    of permutations can support (Phipson & Smyth 2010). The floor is the
+    honest statement "smaller than this test can resolve" -- see
+    `format_p_value`, which renders it as an upper bound rather than a value.
+
+    Closed-form OLS (not `scipy.stats.linregress` per iteration -- 10000
+    calls x potentially hundreds of correlation cells would be far too
+    slow): shuffling y only reorders it, so its own mean/variance -- and
+    x's -- are identical across every permutation; only the pairing changes,
+    letting slope/intercept for every permutation be computed as one
+    vectorized matrix-vector product."""
     n = x.size
     x_centered = x - x.mean()
     sxx = float(np.sum(x_centered**2))
@@ -63,7 +180,44 @@ def _mae_permutation_p_value(
     predicted = slope[:, None] * x[None, :] + intercept[:, None]
     permuted_mae = np.mean(np.abs(y_perm - predicted), axis=1)
 
-    return float(np.mean(permuted_mae < observed_mae))
+    b = int(np.count_nonzero(permuted_mae <= observed_mae))
+    return (b + 1) / (n_permutations + 1)
+
+
+def format_p_value(p_value: float, n_permutations: int = 0) -> str:
+    """Render a permutation p-value for a figure label or a console line.
+
+    At the floor -- no permutation matched or beat the real fit -- the value
+    carries no information beyond "smaller than this test resolves", so it
+    is shown as an upper bound, `p < 1.0e-04`, rather than as a number that
+    invites being read as an estimate. Every other value prints in normal
+    scientific notation.
+
+    `n_permutations = 0` means the count is unknown (a regression stored
+    before it was carried on the result), and the plain value is printed."""
+    if n_permutations > 0:
+        floor = 1.0 / (n_permutations + 1)
+        if p_value <= floor * (1.0 + 1e-9):
+            return f"p < {floor:.1e}"
+    return f"p = {p_value:.2e}"
+
+
+def format_sample_count(regression) -> str:
+    """ "n = 7 samples (21 acquisitions)" when acquisitions were grouped,
+    plain "n = 21" when every acquisition is its own sample -- the second
+    number only earns its place when the two differ."""
+    if getattr(regression, "grouped", False):
+        return f"n = {regression.n_groups} samples ({regression.n_acquisitions} acquisitions)"
+    return f"n = {regression.n}"
+
+
+def format_permutation_mode(regression) -> str:
+    """How the p-value was obtained: every arrangement enumerated, or a
+    random sample of them."""
+    used = getattr(regression, "n_permutations_used", 0) or regression.n_permutations
+    if getattr(regression, "permutation_mode", "sampled") == "exact":
+        return f"exact, {used} permutations"
+    return f"sampled, {used}"
 
 
 @dataclass
@@ -74,8 +228,9 @@ class RegressionFit:
     r_squared: float
     mae: float  # mean absolute residual of the fit
     # permutation-test p-value on `mae` (see _mae_permutation_p_value), not an
-    # analytic test -- fraction of shuffled-and-refit pairings whose residual
-    # MAE is strictly lower than this fit's own
+    # analytic test -- (b + 1) / (n_permutations + 1), where b counts the
+    # shuffled-and-refit pairings whose residual MAE is at most this fit's
+    # own. Never 0; see _mae_permutation_p_value
     p_value: float
     n: int
     x_mean: float
@@ -83,19 +238,90 @@ class RegressionFit:
     residual_std: float  # sqrt(SSres / (n - 2))
     x_min: float  # quantification limits: the fit's own finite-masked x range
     x_max: float
+    # Inference unit. `n` above stays the acquisition count, since the line
+    # is fitted over acquisitions; these describe what the band and the
+    # p-value treated as independent.
+    grouped: bool = False
+    n_groups: int = 0
+    n_acquisitions: int = 0
+    balanced: bool = True
+    permutation_mode: str = "sampled"
+    n_permutations_used: int = 0
+    band_df: int = 0  # degrees of freedom the confidence band uses
+    inference_version: int = INFERENCE_VERSION
+
+
+def grouped_band_parameters(
+    x: np.ndarray, y: np.ndarray, groups: list[np.ndarray]
+) -> tuple[float, float, float, int]:
+    """`(x_mean, ssxx, residual_std, df)` for a confidence band whose unit is
+    the physical sample rather than the acquisition.
+
+    The band comes from a least-squares fit of the per-sample mean response
+    on the per-sample property value, each sample weighted by how many
+    acquisitions it contributed. Because the property value is constant
+    within a sample, that weighted fit reproduces the pooled line exactly,
+    in balanced and unbalanced designs alike -- so the band stays centred on
+    the line actually drawn, while its width is governed by `n_groups - 2`
+    degrees of freedom instead of `n_acquisitions - 2`.
+
+    The weighting assumes each sample mean's precision is proportional to
+    its acquisition count, which is what pooling acquisitions implies. It
+    therefore ignores between-sample variance when counts differ: a sample
+    measured ten times is treated as ten times as informative as one
+    measured once, which overstates its weight if samples themselves vary.
+    With equal counts the weights cancel and this reduces to the ordinary
+    unweighted regression on the sample means."""
+    weights = np.array([float(rows.size) for rows in groups])
+    group_x = np.array([float(np.mean(x[rows])) for rows in groups])
+    group_y = np.array([float(np.mean(y[rows])) for rows in groups])
+    total = weights.sum()
+    x_mean = float((weights * group_x).sum() / total)
+    y_mean = float((weights * group_y).sum() / total)
+    ssxx = float((weights * (group_x - x_mean) ** 2).sum())
+    slope = float((weights * (group_x - x_mean) * (group_y - y_mean)).sum() / ssxx)
+    intercept = y_mean - slope * x_mean
+    residuals = group_y - (slope * group_x + intercept)
+    df = len(groups) - 2
+    residual_std = float(np.sqrt(np.sum(weights * residuals**2) / df)) if df > 0 else float("nan")
+    return x_mean, ssxx, residual_std, df
 
 
 def fit_least_squares(
-    x: np.ndarray, y: np.ndarray, n_permutations: int, rng: np.random.Generator
+    x: np.ndarray,
+    y: np.ndarray,
+    n_permutations: int,
+    rng: np.random.Generator,
+    sample_names: list[str] | None = None,
 ) -> RegressionFit | None:
     """Ordinary least squares `y = slope*x + intercept` over the finite
     pairs of `x`/`y`. Returns `None` (not an exception -- mirrors
     `compute_correlation_matrices`'s own per-cell skip guard) if fewer than
     `MIN_SAMPLES_FOR_REGRESSION` pairs are finite, or either side is
     constant over them (slope undefined, r_squared/mae/p_value would be
-    NaN). `p_value` is a permutation-test p-value on the fit's own residual
-    MAE (see `_mae_permutation_p_value`), computed with `n_permutations`
-    shuffled refits driven by `rng`."""
+    NaN).
+
+    `sample_names`, when given and holding repeats, makes the **physical
+    sample the unit of inference** rather than the acquisition. Several
+    ablation layers of one pellet share a property value and are not
+    independent evidence about it, so treating each as its own point is
+    pseudoreplication: it narrows the confidence band and shrinks the
+    p-value without any more having been measured.
+
+    What that changes, and what it does not:
+
+    * The line, `pearson_r`, `r_squared` and `mae` are **unchanged** --
+      still pooled least squares over every acquisition.
+    * The confidence band comes from the count-weighted regression on the
+      per-sample means, at `n_groups - 2` degrees of freedom (see
+      `grouped_band_parameters`). That fit reproduces the pooled line
+      exactly, so the band stays centred on the line drawn.
+    * The permutation p-value moves property values between whole samples
+      (see `_grouped_mae_permutation_p_value`), and is exact rather than
+      sampled when `n_groups!` fits within `n_permutations`.
+
+    With no repeated name every group holds one acquisition and all three
+    reduce to the ungrouped computation, so passing names costs nothing."""
     mask = np.isfinite(x) & np.isfinite(y)
     n = int(mask.sum())
     if n < MIN_SAMPLES_FOR_REGRESSION:
@@ -112,7 +338,27 @@ def fit_least_squares(
     ss_res = float(np.sum(residuals**2))
     residual_std = float(np.sqrt(ss_res / (n - 2)))
     observed_mae = float(np.mean(np.abs(residuals)))
-    mae_p_value = _mae_permutation_p_value(x_masked, y_masked, observed_mae, n_permutations, rng)
+
+    groups = _group_indices(list(sample_names), mask) if sample_names is not None else []
+    # one acquisition per name is not grouping at all: every quantity below
+    # reduces to its ungrouped form, so take the cheaper path and say so
+    grouped = bool(groups) and len(groups) < n
+    counts = [rows.size for rows in groups]
+    band_x_mean, band_ssxx, band_residual_std, band_df = x_mean, ssxx, residual_std, n - 2
+    permutation_mode, n_permutations_used = "sampled", n_permutations
+
+    if grouped and len(groups) > MIN_SAMPLES_FOR_REGRESSION - 1:
+        band_x_mean, band_ssxx, band_residual_std, band_df = grouped_band_parameters(
+            x_masked, y_masked, groups
+        )
+        mae_p_value, permutation_mode, n_permutations_used = _grouped_mae_permutation_p_value(
+            x_masked, y_masked, observed_mae, groups, n_permutations, rng
+        )
+    else:
+        grouped = False
+        mae_p_value = _mae_permutation_p_value(
+            x_masked, y_masked, observed_mae, n_permutations, rng
+        )
 
     return RegressionFit(
         slope=float(result.slope),
@@ -122,16 +368,25 @@ def fit_least_squares(
         mae=observed_mae,
         p_value=mae_p_value,
         n=n,
-        x_mean=x_mean,
-        ssxx=ssxx,
-        residual_std=residual_std,
+        # the band's own parameters, which are the grouped ones when
+        # grouping applies -- confidence_band_half_width needs no change
+        x_mean=band_x_mean,
+        ssxx=band_ssxx,
+        residual_std=band_residual_std,
         x_min=float(x_masked.min()),
         x_max=float(x_masked.max()),
+        grouped=grouped,
+        n_groups=len(groups) if groups else n,
+        n_acquisitions=n,
+        balanced=len(set(counts)) <= 1,
+        permutation_mode=permutation_mode,
+        n_permutations_used=n_permutations_used,
+        band_df=band_df,
     )
 
 
 RegressionAlgorithm = Callable[
-    [np.ndarray, np.ndarray, int, np.random.Generator], RegressionFit | None
+    [np.ndarray, np.ndarray, int, np.random.Generator, list[str] | None], RegressionFit | None
 ]
 
 REGRESSION_ALGORITHMS: dict[str, RegressionAlgorithm] = {"least_squares": fit_least_squares}
@@ -155,7 +410,7 @@ class SampleGroupStats:
     group_std_y: np.ndarray
 
 
-def group_by_sample_name(sample_names: list[str], x: np.ndarray, y: np.ndarray) -> SampleGroupStats:
+def sample_group_stats(sample_names: list[str], x: np.ndarray, y: np.ndarray) -> SampleGroupStats:
     """Groups the finite-masked `(x, y)` pairs -- the same ones a fit would
     use -- by physical `sample_name`, for plotting only: one point per
     physical sample (mean_x, mean_y, std_y across that sample's own files/
@@ -201,6 +456,20 @@ class FeatureRegression:
     group_mean_x: np.ndarray
     group_mean_y: np.ndarray
     group_std_y: np.ndarray
+    # how many permutations produced `p_value`, so its floor is recoverable
+    # at display time. 0 means a regression stored before this was carried.
+    n_permutations: int = 0
+    # what the band and the p-value treated as independent (see
+    # fit_least_squares). `n` remains the acquisition count, since the line
+    # is fitted over acquisitions.
+    grouped: bool = False
+    n_groups: int = 0
+    n_acquisitions: int = 0
+    balanced: bool = True
+    permutation_mode: str = "sampled"
+    n_permutations_used: int = 0
+    band_df: int = 0
+    inference_version: int = 0
 
 
 def compute_feature_regression(
@@ -213,15 +482,22 @@ def compute_feature_regression(
     y: np.ndarray,
     n_permutations: int,
     rng: np.random.Generator,
+    group_by_sample_name: bool = True,
 ) -> FeatureRegression | None:
     """Fits `algorithm` (a registered name, see `get_regression_algorithm`)
     over `(x, y)`, then groups the same points by `sample_names` for
     plotting. Returns `None` if the fit itself couldn't be computed
-    (insufficient or degenerate data)."""
-    fit = get_regression_algorithm(algorithm)(x, y, n_permutations, rng)
+    (insufficient or degenerate data).
+
+    `group_by_sample_name` (default True) additionally makes the physical
+    sample the unit of inference -- see `fit_least_squares`. It is a no-op
+    when no name repeats."""
+    fit = get_regression_algorithm(algorithm)(
+        x, y, n_permutations, rng, sample_names if group_by_sample_name else None
+    )
     if fit is None:
         return None
-    grouped = group_by_sample_name(sample_names, x, y)
+    plot_points = sample_group_stats(sample_names, x, y)
     return FeatureRegression(
         column_name=column_name,
         feature_id=feature_id,
@@ -239,10 +515,19 @@ def compute_feature_regression(
         residual_std=fit.residual_std,
         x_min=fit.x_min,
         x_max=fit.x_max,
-        sample_names=grouped.sample_names,
-        group_mean_x=grouped.group_mean_x,
-        group_mean_y=grouped.group_mean_y,
-        group_std_y=grouped.group_std_y,
+        sample_names=plot_points.sample_names,
+        group_mean_x=plot_points.group_mean_x,
+        group_mean_y=plot_points.group_mean_y,
+        group_std_y=plot_points.group_std_y,
+        n_permutations=n_permutations,
+        grouped=fit.grouped,
+        n_groups=fit.n_groups,
+        n_acquisitions=fit.n_acquisitions,
+        balanced=fit.balanced,
+        permutation_mode=fit.permutation_mode,
+        n_permutations_used=fit.n_permutations_used,
+        band_df=fit.band_df,
+        inference_version=fit.inference_version,
     )
 
 

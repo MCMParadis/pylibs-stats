@@ -28,8 +28,8 @@ import sys
 import numpy as np
 
 from pylibs.core import api
-from pylibs.core.io.readers.libs_reader import write_libs_file
 from pylibs.core.io.store import RESULTS_DIRNAME, ResultsStore
+from pylibs.core.io.writers.libs_writer import write_libs_file
 from pylibs.core.project.project import Project
 
 N_WORKERS = 3

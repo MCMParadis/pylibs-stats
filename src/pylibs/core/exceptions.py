@@ -29,6 +29,11 @@ class ResultsError(PylibsError):
     """Raised when a sample has no pipeline results yet (run_pipeline first)."""
 
 
+class DistributionError(PylibsError):
+    """Raised for an invalid distribution option (e.g. an unknown histogram
+    windowing strategy)."""
+
+
 class ReportError(PylibsError):
     """Raised when a report can't be generated (e.g. missing raster metadata)."""
 
