@@ -51,6 +51,7 @@ class _WorkerState:
     algorithm: str
     n_permutations: int
     random_seed: int
+    group_by_sample_name: bool
 
 
 _STATE: _WorkerState | None = None
@@ -66,6 +67,7 @@ def init_worker(
     algorithm: str,
     n_permutations: int,
     random_seed: int,
+    group_by_sample_name: bool = True,
 ) -> None:
     """`ProcessPoolExecutor` initializer (also called directly, once, for
     the sequential `n_processes<=1` path): stash this sweep's read-only
@@ -82,6 +84,7 @@ def init_worker(
         algorithm=algorithm,
         n_permutations=n_permutations,
         random_seed=random_seed,
+        group_by_sample_name=group_by_sample_name,
     )
 
 
@@ -122,6 +125,7 @@ def compute_cell(cell_index: int) -> CellResult:
         y,
         state.n_permutations,
         rng,
+        group_by_sample_name=state.group_by_sample_name,
     )
     return CellResult(column_name, metric_name, feature_id, regression)
 
@@ -152,6 +156,7 @@ def run_regression_sweep(
     n_processes: int = 1,
     worker_index: int = 0,
     n_workers: int = 1,
+    group_by_sample_name: bool = True,
 ) -> RegressionSweepResult:
     """Fits every (column, metric, feature) cell -- `len(column_names) *
     len(metrics_to_fit) * len(feature_ids)` of them -- storing each via
@@ -231,6 +236,14 @@ def run_regression_sweep(
                 "r_squared": regression.r_squared,
                 "mae": regression.mae,
                 "p_value": regression.p_value,
+                "grouped": regression.grouped,
+                "n_groups": regression.n_groups,
+                "n_acquisitions": regression.n_acquisitions,
+                "balanced": regression.balanced,
+                "permutation_mode": regression.permutation_mode,
+                "n_permutations_used": regression.n_permutations_used,
+                "band_df": regression.band_df,
+                "inference_version": regression.inference_version,
                 "n": regression.n,
                 "x_mean": regression.x_mean,
                 "ssxx": regression.ssxx,
@@ -260,6 +273,7 @@ def run_regression_sweep(
             algorithm,
             n_permutations,
             random_seed,
+            group_by_sample_name,
         ),
     )
 

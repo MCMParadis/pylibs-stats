@@ -132,3 +132,66 @@ def mark_done(arrays: CheckpointArrays, index: int, row: np.ndarray) -> None:
     data."""
     arrays.results[index] = row
     arrays.completed[index] = 1
+
+
+DEFAULT_BATCH_SIZE = 50
+
+
+class CheckpointWriter:
+    """Buffers finished iterations and writes them a batch at a time.
+
+    Same invariant as `mark_done`, at batch granularity: every buffered
+    result row is written first, and only then are those rows' completion
+    flags set. A crash anywhere in between leaves the affected flags at 0, so
+    `pending_indices` still lists those iterations and they are recomputed.
+    Nothing is ever flagged complete without its result already on disk.
+
+    Why batch at all. Each write crosses zarr's synchronous wrapper around
+    its async path, and that fixed per-call cost dominates when a row is a
+    few kilobytes. One call carrying `batch_size` rows pays it once instead
+    of `batch_size` times. The chunk size stays 1, so the arrays are written
+    exactly as before -- one chunk per iteration, which is what lets shard
+    processes write interleaved indices without contending.
+
+    Indices arrive in completion order, not submission order, so a batch is
+    an arbitrary set. It is sorted before writing because zarr's orthogonal
+    selection requires increasing indices; sorting reorders only the write,
+    never the mapping from index to row.
+
+    `batch_size=1` restores the original write-per-iteration behaviour.
+    """
+
+    def __init__(self, arrays: CheckpointArrays, batch_size: int = DEFAULT_BATCH_SIZE):
+        if batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {batch_size}")
+        self.arrays = arrays
+        self.batch_size = batch_size
+        self._indices: list[int] = []
+        self._rows: list[np.ndarray] = []
+
+    def add(self, index: int, row: np.ndarray) -> None:
+        self._indices.append(index)
+        self._rows.append(row)
+        if len(self._indices) >= self.batch_size:
+            self.flush()
+
+    def flush(self) -> None:
+        """Write every buffered row, then flag every one of them."""
+        if not self._indices:
+            return
+        order = np.argsort(self._indices)
+        indices = np.asarray(self._indices, dtype=int)[order]
+        rows = np.stack([self._rows[i] for i in order])
+        self._indices, self._rows = [], []
+        # results first, flags second -- an interruption between the two
+        # leaves those iterations pending, never falsely done
+        self.arrays.results.set_orthogonal_selection((indices,), rows)
+        self.arrays.completed.set_orthogonal_selection(
+            (indices,), np.ones(len(indices), dtype=self.arrays.completed.dtype)
+        )
+
+    def __enter__(self) -> "CheckpointWriter":
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        self.flush()

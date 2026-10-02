@@ -1,0 +1,84 @@
+# Benchmark configuration. Every path is resolved relative to the repository
+# root, so the harness can be launched from anywhere.
+#
+# Nothing here changes what is computed -- only how much of it is done at once.
+# The feature sets and the resampling configuration define the workload; the
+# worker grid defines the parallelism swept over it.
+#
+# Only the bundled example acquisitions are used: 7 physical samples of boron
+# and calcium in graphite, 3 ablation layers each, with the peak table in
+# examples/. Nothing here needs private data.
+
+data:
+  sample_dir: data/dataset1
+  peak_table: examples/peak_table.csv
+  # Scenario A's single sample, one ablation layer from the bundled set.
+  single_sample: data/dataset1/sample1_1.libs
+  # Scenario B's batch. Empty means every .libs file in sample_dir.
+  batch_samples: []
+  # Caps the batch without editing the list above. 0 means no cap.
+  max_batch_samples: 0
+
+feature_sets:
+  # What the bundled example registers: 7 bare lines, 2 plain ratios, 2
+  # normalised-ratio composites and 5 log/exp composites over those.
+  base:
+    - B249
+    - B345
+    - Ca393
+    - Ca396
+    - C229
+    - C247
+    - C251
+    - B249/C229
+    - Ca393/C229
+    - (Ca393)/(Ca393+C229)
+    - (B345)/(B345+C229)
+    - log((Ca393)/(Ca393+C229))
+    - exp((Ca393)/(Ca393+C229))
+    - log((B345)/(B345+C229))
+    - log(B249/C229)
+    - log(Ca393/C229)
+  # A larger set built only from the same seven lines, so it needs no data or
+  # peak table beyond the bundled ones. Every ordered pair of distinct lines
+  # contributes a ratio and a normalised ratio, and each of those contributes
+  # its log. The harness expands this and writes the result to
+  # features_extended.txt alongside the results.
+  #
+  # 7 bare + 42 ratios + 42 normalised + 42 log-ratios + 42 log-normalised
+  # = 175 features, of which 84 are ratio features and so also get the
+  # 2D joint-distribution metrics.
+  extended:
+    peaks: [B249, B345, Ca393, Ca396, C229, C247, C251]
+    include: [bare, ratio, normalised, log_ratio, log_normalised]
+
+bootstrap:
+  method: random
+  # A percentage of the sample's own scan count, rather than a fixed pixel
+  # count: the bundled acquisitions hold 861 scans, so a fixed 1000 would
+  # resample more positions than the sample has.
+  pct: 50
+  n_iterations: 1000
+  base_seed: 0
+  shuffle: false
+
+run:
+  # Empty means: powers of two from 1 up to the physical core count, plus the
+  # physical core count itself when it is not a power of two. Never exceeds it.
+  workers: []
+  repeats: 3
+  warmup: true
+  # Scenario D launches k independent processes, each with 1 in-process worker
+  # and its own shard index. Uses the same worker grid.
+  multiprocess: true
+  scenarios: [A, Aext, B, C, D]
+  # Temporary projects live here. Empty means the system temp directory,
+  # which on many Linux systems is RAM-backed, so the project store would not
+  # be measured against real disk. Set it to a path on the same storage as the
+  # data for a like-for-like comparison; environment.json records which was
+  # used, under storage_project.
+  scratch_dir: ""
+
+output:
+  dir: benchmarks/results
+  dpi: 300

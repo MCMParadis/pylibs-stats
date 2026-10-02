@@ -136,8 +136,10 @@ def generate_feature_maps(
             f"Sample {sample_id!r} has no HeightPixels/WidthPixels in its raw file's "
             "params -- feature maps need a rastered sample."
         )
-    n_rows = int(params["HeightPixels"])
-    n_cols = int(params["WidthPixels"])
+    # SpectrumStatsStep settled the frame at ingest and stored it, so the header is
+    # trustworthy here -- a project processed before that must be re-run to gain it,
+    # the same rule masks already follow
+    n_rows, n_cols = int(params["HeightPixels"]), int(params["WidthPixels"])
     width_img, height_img = resolve_physical_extent(params, n_rows, n_cols)
     peak_entries = peak_entries or {}
 

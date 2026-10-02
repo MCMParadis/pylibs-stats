@@ -1,0 +1,24 @@
+{
+  "cpu_model": "AMD Ryzen 9 9950X3D 16-Core Processor",
+  "physical_cores": 16,
+  "logical_cores": 32,
+  "ram_total": "59.5 GiB",
+  "storage_data": "NVMe SSD (ext4)",
+  "storage_project": "RAM-backed (tmpfs)",
+  "os": "Linux 7.0.0-31-generic",
+  "python": "3.13.15",
+  "numpy": "2.5.2",
+  "scipy": "1.18.0",
+  "zarr": "3.3.0",
+  "pylibs_version": "1.0.1",
+  "pylibs_tag": "v1.0.1",
+  "pylibs_commit": "4968da664a724bbaa56f09ace11f68e940985f40",
+  "pylibs_dirty": false,
+  "thread_env": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1"
+  },
+  "recorded_at_utc": "2026-10-02T13:57:51.378098+00:00"
+}

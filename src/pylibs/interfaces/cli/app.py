@@ -5,7 +5,7 @@ import typer
 
 from pylibs.core import api
 from pylibs.core.api import DEFAULT_SCHEME
-from pylibs.core.exceptions import PylibsError
+from pylibs.core.exceptions import ProjectError, PylibsError
 from pylibs.core.logging import LOG_FILENAME
 from pylibs.interfaces.dsl.runner import run_script
 
@@ -662,6 +662,13 @@ def project_compute_regressions(
     random_seed: int = typer.Option(
         0, "--random-seed", help="Seed for the MAE permutation test's RNG (reproducibility)."
     ),
+    group_by_sample_name: bool = typer.Option(
+        True,
+        "--group-by-sample-name/--no-group-by-sample-name",
+        help="Treat the physical sample, not the acquisition, as the unit of inference. "
+        "The fitted line, R2 and MAE are unchanged; the confidence band and the permutation "
+        "test use one point per sample name. No-op when no name repeats.",
+    ),
     n_processes: int = typer.Option(
         1,
         "--n-processes",
@@ -700,6 +707,7 @@ def project_compute_regressions(
             n_processes=n_processes,
             worker_index=worker_index,
             n_workers=n_workers,
+            group_by_sample_name=group_by_sample_name,
         )
     except PylibsError as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -787,7 +795,9 @@ def project_get_regression_results(
             f"  {regression.feature_id} ({regression.metric_name}): "
             f"slope={regression.slope:.4g} intercept={regression.intercept:.4g} "
             f"R²={regression.r_squared:.4g} MAE={regression.mae:.4g} "
-            f"p={regression.p_value:.4g} n={regression.n}"
+            f"{api.format_p_value(regression.p_value, regression.n_permutations)} "
+            f"[{api.format_permutation_mode(regression)}] "
+            f"{api.format_sample_count(regression)}"
         )
 
 
@@ -1469,6 +1479,84 @@ def convert_ele_to_libs(
     try:
         path = api.convert_ele_to_libs(
             ele_path=ele_path, libs_path=libs_path, capdata=capdata, batchsize=batchsize
+        )
+    except PylibsError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Wrote {path}")
+
+
+@app.command("write-libs")
+def write_libs(
+    out_path: Path,
+    csv_path: Path | None = typer.Option(
+        None, "--csv", help="CSV spectral matrix: x,y then one column per wavelength."
+    ),
+    spectra_path: Path | None = typer.Option(
+        None, "--spectra", help="(n_scans, n_pixels) array, .npy or .npz."
+    ),
+    wavelengths_path: Path | None = typer.Option(
+        None, "--wavelengths", help="(n_pixels,) array, .npy or .npz."
+    ),
+    coordinates_path: Path | None = typer.Option(
+        None, "--coordinates", help="(n_scans, 2) x/y positions, .npy or .npz."
+    ),
+    grid: str | None = typer.Option(
+        None, "--grid", help="Raster shape as ROWSxCOLS, e.g. 41x21. Alternative to --coordinates."
+    ),
+    step: float | None = typer.Option(
+        None, "--step", help="Pixel spacing, in --units. Gives maps physical axes."
+    ),
+    units: str = typer.Option("mm", "--units", help="Spatial units for --step."),
+    order: str = typer.Option(
+        "raster", "--order", help="Row order of the input: 'raster' or 'serpentine'."
+    ),
+    dtype: str = typer.Option("float64", "--dtype", help="Stored dtype: float64 or float32."),
+    npz_key: str | None = typer.Option(
+        None, "--npz-key", help="Member to read from a multi-array .npz (spectra only)."
+    ),
+) -> None:
+    """Write a .libs sample file from arrays or a CSV spectral matrix.
+
+    Two input shapes. Either --csv, holding one row per pixel with x and y
+    columns and one column per wavelength (the header gives each column's
+    wavelength), or --spectra with --wavelengths as .npy/.npz arrays.
+
+    Position comes from --coordinates or --grid. A CSV carries its own
+    coordinates, so neither is needed with it.
+    """
+    try:
+        if csv_path is not None:
+            if spectra_path is not None or wavelengths_path is not None:
+                raise ProjectError("--csv cannot be combined with --spectra/--wavelengths")
+            spectra, wavelengths, coordinates = api.load_csv_matrix(csv_path)
+        else:
+            if spectra_path is None or wavelengths_path is None:
+                raise ProjectError("either --csv, or both --spectra and --wavelengths, is required")
+            spectra = api.load_array(spectra_path, key=npz_key)
+            wavelengths = api.load_array(wavelengths_path)
+            coordinates = api.load_array(coordinates_path) if coordinates_path is not None else None
+
+        parsed_grid = None
+        if grid is not None:
+            try:
+                rows, cols = (int(part) for part in grid.lower().split("x"))
+            except ValueError:
+                raise ProjectError(f"--grid must look like ROWSxCOLS, got {grid!r}") from None
+            parsed_grid = (rows, cols)
+        if parsed_grid is None and coordinates is None:
+            raise ProjectError("one of --grid or --coordinates is required")
+
+        path = api.write_libs(
+            out_path,
+            spectra,
+            wavelengths,
+            grid=parsed_grid if coordinates is None else None,
+            coordinates=coordinates,
+            step=step,
+            units=units,
+            dtype=dtype,
+            order=order,
         )
     except PylibsError as exc:
         typer.echo(f"Error: {exc}", err=True)

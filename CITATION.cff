@@ -35,7 +35,7 @@ authors:
     orcid: "https://orcid.org/0000-0002-8887-6730"
     affiliation: "Université de Montréal"
 
-version: 1.0.0
+version: 1.0.1
 
 license: BSD-3-Clause
 repository-code: "https://github.com/MCMParadis/pylibs-stats"

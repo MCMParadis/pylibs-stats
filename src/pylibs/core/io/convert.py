@@ -5,11 +5,9 @@ requiring the private `libs_importer` package.
 
 from pathlib import Path
 
-import numpy as np
-
 from pylibs.core.exceptions import ReaderError
 from pylibs.core.io.reader import get_reader
-from pylibs.core.io.readers.libs_reader import write_libs_file
+from pylibs.core.io.writers.libs_writer import write_libs
 
 
 def convert_ele_to_libs(
@@ -22,17 +20,31 @@ def convert_ele_to_libs(
     the private `libs_importer` package) and write it to `libs_path` in the
     `.libs` archive format.
 
-    The whole sample is held in memory before writing -- `.libs` is a single
-    npz archive, not an incrementally-written format -- so this is meant for
-    producing small, shareable samples, not for production-scale conversions.
+    Streams: batches go straight into the archive as they are read, so peak
+    memory is one batch rather than the whole sample (see
+    `io.writers.libs_writer`). The source's own `params` are carried across
+    unchanged apart from the geometry fields the writer derives.
     """
     ele_path = Path(ele_path)
     if ele_path.suffix.lower() != ".ele":
         raise ReaderError(f"Not a .ELE file: {ele_path}")
 
     reader = get_reader(ele_path, capdata=capdata, batchsize=batchsize)
-    batches = list(reader.iter_window(batchsize))
-    data = np.concatenate(batches, axis=0) if batches else np.empty((0, len(reader.wavelengths)))
-    wavelengths = reader.wavelengths
-    params = reader.params
-    write_libs_file(Path(libs_path), data=data, wavelengths=wavelengths, params=params)
+    params = dict(reader.params)
+    n_scans = reader.n_scans
+    # the source already stores its scans in the stage's own serpentine
+    # order, so they pass through untouched; the grid comes from the file's
+    # own params, falling back to a single row when it carries none
+    n_rows = int(params.get("HeightPixels") or 1)
+    n_cols = int(params.get("WidthPixels") or n_scans)
+    if n_rows * n_cols != n_scans:
+        n_rows, n_cols = 1, n_scans
+    write_libs(
+        Path(libs_path),
+        reader.iter_window(batchsize),
+        reader.wavelengths,
+        grid=(n_rows, n_cols),
+        params=params,
+        order="serpentine",
+        n_scans=n_scans,
+    )

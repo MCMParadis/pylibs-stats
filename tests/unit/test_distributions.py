@@ -3,6 +3,7 @@ import math
 import numpy as np
 import pytest
 
+from pylibs.core.exceptions import DistributionError
 from pylibs.core.pipeline import metrics as metrics_module
 from pylibs.core.pipeline.distributions import (
     compute_distribution_1d,
@@ -67,6 +68,36 @@ def test_distribution_2d_gini_excludes_empty_bins():
     # sanity: including the empty bins would give a much higher (near-1)
     # gini, dominated by histogram sparsity rather than the data's shape
     assert gini_index(flat) > distribution.gini
+
+
+def test_distribution_1d_full_window_keeps_a_rare_tail():
+    """A bounded quantity whose rare high values are the point: the default
+    skew-adjusted fence discards them as outliers, `window="full"` bins the
+    whole range and keeps them."""
+    values = np.full(10_000, 0.002)
+    values[:30] = 0.95  # e.g. the pixels of an image where an element is present
+
+    fenced = compute_distribution_1d(values)
+    assert fenced.bin_edges[-1] < 0.95  # the 30 are outside the window entirely
+    assert fenced.counts.sum() == 9970
+
+    full = compute_distribution_1d(values, window="full")
+    assert (full.bin_edges[0], full.bin_edges[-1]) == (0.002, 0.95)
+    assert full.counts.sum() == 10_000
+    # metrics computed from the raw values are the same either way
+    assert full.mean == fenced.mean and full.gini == fenced.gini
+
+
+def test_distribution_1d_window_defaults_to_skew_and_rejects_anything_else():
+    values = np.concatenate([np.linspace(0.0, 1.0, 200), np.full(3, 50.0)])
+
+    default = compute_distribution_1d(values)
+    explicit = compute_distribution_1d(values, window="skew")
+    assert np.array_equal(default.counts, explicit.counts)
+    assert np.array_equal(default.bin_edges, explicit.bin_edges)
+
+    with pytest.raises(DistributionError, match="'skew' or 'full'"):
+        compute_distribution_1d(values, window="minmax")
 
 
 def test_distribution_1d_property_matches_metrics_dict():

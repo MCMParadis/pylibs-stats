@@ -23,6 +23,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import curve_fit
 
+from pylibs.core.exceptions import DistributionError
 from pylibs.core.logging import get_logger
 from pylibs.core.pipeline import metrics
 from pylibs.core.pipeline.metrics import MetricContext1D, MetricContext2D
@@ -227,12 +228,26 @@ def compute_distribution_1d(
     n_bins: int = 150,
     fit_gaussian: bool = True,
     whisker: float = 1.5,
+    window: str = "skew",
 ) -> Distribution1D:
     """Histogram + every `METRIC_NAMES_1D` metric for `values`, dropping any
     NaN/inf first (e.g. from an out-of-range peak in a composite
     expression).
 
-    The histogram itself is windowed to `skew_adjusted_bounds(finite,
+    `window` chooses what range the bins span:
+
+    * `"skew"` (default) -- the robust fence described below, which keeps a
+      skewed tail or a few extreme outliers from flattening everything else
+      into one bin.
+    * `"full"` -- the finite data's own min to max, every value binned and
+      none dropped. For a quantity whose range is meaningful rather than
+      estimated (a probability on [0, 1], say), the rare extremes can be the
+      interesting ones, and the fence is exactly what discards them.
+
+    Only the histogram changes. Every metric computed from raw values is
+    identical either way; see the list below for which are which.
+
+    Under `"skew"` the histogram is windowed to `skew_adjusted_bounds(finite,
     whisker)` -- a skew-adjusted, exponential boxplot-whisker-style fence
     (default 1.5x IQR, widened/narrowed per side based on `quantile_
     skewness`), narrowed to the real data min/max within it -- a robust
@@ -270,7 +285,14 @@ def compute_distribution_1d(
     median = metrics.median(finite)
     std = metrics.std(finite)
 
-    vmin, vmax = skew_adjusted_bounds(finite, whisker)
+    if window == "skew":
+        vmin, vmax = skew_adjusted_bounds(finite, whisker)
+    elif window == "full":
+        # min to max of the finite values, so nothing is dropped. Empty input
+        # gives (0.0, 0.0), matching skew_adjusted_bounds' own empty case.
+        vmin, vmax = (float(finite.min()), float(finite.max())) if finite.size else (0.0, 0.0)
+    else:
+        raise DistributionError(f"window must be 'skew' or 'full', got {window!r}")
     windowed = finite[(finite >= vmin) & (finite <= vmax)]
     counts, bin_edges = np.histogram(windowed, bins=n_bins, range=(vmin, vmax))
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
@@ -297,11 +319,11 @@ def compute_distribution_1d(
         try:
             peak_idx = int(np.argmax(counts))
             p0 = [float(counts[peak_idx]), float(bin_centers[peak_idx]), float(np.std(windowed))]
-            bounds = ([0.0, vmin, 1e-9], [np.inf, vmax, vmax - vmin])
+            fit_bounds = ([0.0, vmin, 1e-9], [np.inf, vmax, vmax - vmin])
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
                 params, _ = curve_fit(
-                    gaussian, bin_centers, counts, p0=p0, bounds=bounds, method="trf"
+                    gaussian, bin_centers, counts, p0=p0, bounds=fit_bounds, method="trf"
                 )
             for warning in caught:
                 logger.debug("Gaussian fit warning: %s", warning.message)

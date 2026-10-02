@@ -211,6 +211,58 @@ def CONVERTELETOLIBS(
     )
 
 
+def WRITELIBS(
+    path: str | Path,
+    spectra,
+    wavelengths,
+    grid: tuple[int, int] | None = None,
+    coordinates=None,
+    step: tuple[float, float] | float | None = None,
+    units: str = "mm",
+    mask=None,
+    metadata: dict | None = None,
+    params: dict | None = None,
+    dtype: str = "float64",
+    order: str = "raster",
+    n_scans: int | None = None,
+) -> Path:
+    """Write spectra to `path` as a `.libs` sample file -- the general
+    ingestion path for data arriving in any other format. No project or
+    registry involved; the result registers with ADDSAMPLE like any other
+    sample. Returns `path`.
+
+    Position comes from `grid` (n_rows, n_cols) or `coordinates`. `order`
+    is "raster" (default) or "serpentine", saying how the incoming rows are
+    arranged. See `api.write_libs` and docs/libs_format.md."""
+    return api.write_libs(
+        Path(path),
+        spectra,
+        wavelengths,
+        grid=grid,
+        coordinates=coordinates,
+        step=step,
+        units=units,
+        mask=mask,
+        metadata=metadata,
+        params=params,
+        dtype=dtype,
+        order=order,
+        n_scans=n_scans,
+    )
+
+
+def LOADCSVMATRIX(path: str | Path, x_column: str = "x", y_column: str = "y"):
+    """Read a CSV spectral matrix -- one row per pixel, x and y columns plus
+    one column per wavelength, the header giving each column's wavelength.
+    Returns `(spectra, wavelengths, coordinates)` for WRITELIBS."""
+    return api.load_csv_matrix(Path(path), x_column=x_column, y_column=y_column)
+
+
+def LOADARRAY(path: str | Path, key: str | None = None):
+    """Read one array from a `.npy`, or `key`'s member of a `.npz`."""
+    return api.load_array(Path(path), key=key)
+
+
 def RUNPIPELINE(
     project_name: str,
     sample_id: str,
@@ -371,6 +423,7 @@ def COMPUTEREGRESSIONS(
     all_metrics: bool = False,
     n_permutations: int = 10000,
     random_seed: int = 0,
+    group_by_sample_name: bool = True,
     n_processes: int = 1,
     worker_index: int = 0,
     n_workers: int = 1,
@@ -407,6 +460,7 @@ def COMPUTEREGRESSIONS(
         metric=None if all_metrics else metric,
         n_permutations=n_permutations,
         random_seed=random_seed,
+        group_by_sample_name=group_by_sample_name,
         n_processes=n_processes,
         worker_index=worker_index,
         n_workers=n_workers,
@@ -802,6 +856,9 @@ VERBS = {
     "LISTSAMPLES": LISTSAMPLES,
     "LISTFEATURES": LISTFEATURES,
     "IMPORTLIBSFILE": IMPORTLIBSFILE,
+    "WRITELIBS": WRITELIBS,
+    "LOADCSVMATRIX": LOADCSVMATRIX,
+    "LOADARRAY": LOADARRAY,
     "CONVERTELETOLIBS": CONVERTELETOLIBS,
     "RUNPIPELINE": RUNPIPELINE,
     "RUNPIPELINEBATCH": RUNPIPELINEBATCH,

@@ -4,7 +4,13 @@ dashed fitted line, and a 95% confidence-interval band (see
 `pipeline.regression.FeatureRegression`/`confidence_band_half_width`) --
 matching the reference paper's calibration-curve figure. `p_value` is a
 permutation-test p-value on the fit's own residual MAE (see
-`pipeline.regression.fit_least_squares`), not an analytic test. Uses
+`pipeline.regression.fit_least_squares`), not an analytic test, and the
+page states both how it was obtained (every arrangement enumerated, or a
+sample of them) and what counted as independent: "n = 7 samples (21
+acquisitions)" when several acquisitions share a sample name, plain
+"n = 21" when none do. The band is drawn from whatever
+`x_mean`/`ssxx`/`residual_std` the fit stored, which are the grouped ones
+when grouping applied. Uses
 matplotlib's built-in PdfPages, like the per-sample diagnostics report in
 `pdf.py`.
 """
@@ -18,7 +24,13 @@ import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 
-from pylibs.core.pipeline.regression import FeatureRegression, confidence_band_half_width
+from pylibs.core.pipeline.regression import (
+    FeatureRegression,
+    confidence_band_half_width,
+    format_p_value,
+    format_permutation_mode,
+    format_sample_count,
+)
 from pylibs.core.reporting.pdf import A4_SIZE, CAPTION_WIDTH, add_page_number, cover_page
 
 
@@ -105,7 +117,10 @@ def _regression_figure(
 
     stats_text = (
         f"R²: {regression.r_squared * 100:.2f}%\nr: {regression.pearson_r:.3f}\n"
-        f"MAE: {regression.mae:.3g}\np: {regression.p_value:.2e}"
+        f"MAE: {regression.mae:.3g}\n"
+        f"{format_p_value(regression.p_value, regression.n_permutations)} "
+        f"({format_permutation_mode(regression)})\n"
+        f"{format_sample_count(regression)}"
     )
     # anchor just below the legend's own (rendered, not guessed) bottom edge, so
     # it never overlaps regardless of the legend's actual size
