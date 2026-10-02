@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2]
+
+### Fixed
+
+- **The drawn confidence band now uses `band_df`, as documented.** Grouped
+  inference stored `band_df = n_groups - 2` and the documentation said the
+  band used Student's t at that figure, but `confidence_band_half_width`
+  derived its degrees of freedom from `n - 2` and the report passed the
+  acquisition count, so nothing in the drawing path ever read `band_df`. For
+  the bundled example the band was drawn with t at 19 degrees of freedom
+  instead of 5, making it about 19% too narrow.
+
+  `confidence_band_half_width` now takes the degrees of freedom explicitly.
+  The `1 / n` term still uses the acquisition count: `residual_std` is per
+  unit weight and `ssxx` is the weighted sum of squares, so the total weight
+  behind the fit is every acquisition, and only the degrees of freedom are
+  the sample count. The drawn band now equals ordinary least squares on the
+  sample means exactly.
+
+  The fitted line, Pearson r, R², MAE and every p-value are unchanged.
+  Regressions stored before 1.0.1 carry no `band_df` and keep the previous
+  behaviour. Regressions stored by 1.0.1 already carry `band_df`, so they
+  are drawn correctly without being recomputed.
+
 ## [1.0.1]
 
 Two performance fixes to parallel execution. Neither changes what is
@@ -104,25 +128,6 @@ unchanged.
   counts, as "n = 7 samples (21 acquisitions)", and how the p-value was
   obtained. **Regressions stored by 1.0.0 must be recomputed**, as noted for
   the p-value change above.
-
-- **The drawn confidence band now uses `band_df`, as documented.** Grouped
-  inference stored `band_df = n_groups - 2` and the documentation said the
-  band used Student's t at that figure, but `confidence_band_half_width`
-  derived its degrees of freedom from `n - 2` and the report passed the
-  acquisition count, so nothing in the drawing path ever read `band_df`. For
-  the bundled example the band was drawn with t at 19 degrees of freedom
-  instead of 5, making it about 19% too narrow.
-
-  `confidence_band_half_width` now takes the degrees of freedom explicitly.
-  The `1 / n` term still uses the acquisition count: `residual_std` is per
-  unit weight and `ssxx` is the weighted sum of squares, so the total weight
-  behind the fit is every acquisition, and only the degrees of freedom are
-  the sample count. The drawn band now equals ordinary least squares on the
-  sample means exactly.
-
-  The fitted line, Pearson r, R², MAE and every p-value are unchanged.
-  Regressions stored before 1.0.1 carry no `band_df` and keep the previous
-  behaviour.
 
 - **The raster frame is settled once, at ingest.** Some instruments write
   `HeightPixels`/`WidthPixels` as the number of intervals between pixels

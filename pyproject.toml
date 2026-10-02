@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pylibs-stats"
-version = "1.0.1"
+version = "1.0.2"
 description = "Statistical processing of LIBS imaging data"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -51,6 +51,8 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/MCMParadis/pylibs-stats"
 Documentation = "https://github.com/MCMParadis/pylibs-stats#readme"
+# Concept DOI: resolves to the latest release. Keep in sync with
+# CITATION.cff's `doi:` / `identifiers:`.
 DOI = "https://doi.org/10.5281/zenodo.22313353"
 
 [project.optional-dependencies]
