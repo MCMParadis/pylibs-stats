@@ -16,10 +16,10 @@ import numpy as np
 import pytest
 import zarr
 
-from pylibs.core import api
-from pylibs.core.io.writers.libs_writer import write_libs_file
-from pylibs.core.runs import executor
-from pylibs.core.runs.checkpoint import CheckpointArrays, CheckpointWriter
+from pylibs_stats.core import api
+from pylibs_stats.core.io.writers.libs_writer import write_libs_file
+from pylibs_stats.core.runs import executor
+from pylibs_stats.core.runs.checkpoint import CheckpointArrays, CheckpointWriter
 
 
 def _arrays(tmp_path, n_iterations: int) -> CheckpointArrays:

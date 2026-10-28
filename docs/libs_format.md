@@ -1,14 +1,14 @@
 # The `.libs` file format
 
-`.libs` is the open, self-contained format pylibs reads. It is a **NumPy
+`.libs` is the open, self-contained format pylibs-stats reads. It is a **NumPy
 `.npz` archive**: a standard zip holding three uncompressed `.npy` members.
 Nothing about it is proprietary, it depends on no private code, and any
 language with a zip library and a `.npy` reader can read or write one.
 
 This document is the specification. The reference implementations are
-`pylibs.core.io.readers.libs_reader` and `pylibs.core.io.writers.libs_writer`.
+`pylibs_stats.core.io.readers.libs_reader` and `pylibs_stats.core.io.writers.libs_writer`.
 
-## Reading one without pylibs
+## Reading one without pylibs-stats
 
 ```python
 import numpy as np, json
@@ -38,7 +38,7 @@ correctly, but loses that property.
 
 `data` rows and `wavelengths` entries correspond by position: `data[k, j]` is
 the intensity at `wavelengths[j]` for scan `k`. Intensity units are whatever
-the instrument produced; pylibs treats them as arbitrary and never converts
+the instrument produced; pylibs-stats treats them as arbitrary and never converts
 them.
 
 ## Scan order
@@ -56,7 +56,7 @@ row 2:  10 11 12 13 14                       10 11 12 13 14
 
 There are no per-pixel coordinate arrays. Position is reconstructed from
 `HeightPixels` and `WidthPixels`, optionally narrowed by
-`PixelAssignmentMatrix`. `pylibs.core.reporting.raster.to_raster` undoes the
+`PixelAssignmentMatrix`. `pylibs_stats.core.reporting.raster.to_raster` undoes the
 ordering when placing values on a map.
 
 Data arriving from another format is almost always in plain raster order, so
@@ -67,7 +67,7 @@ rows of every map produced from the file.
 ## The `params` object
 
 A JSON object stored as a NumPy unicode scalar. Every field is optional as
-far as the file format goes; what each one unlocks in pylibs is below.
+far as the file format goes; what each one unlocks in pylibs-stats is below.
 
 ### Required for spatial output
 
@@ -127,10 +127,10 @@ is preserved and ignored, so an instrument's own metadata can ride along.
 
 ## Writing one
 
-Through pylibs, which validates and derives the geometry fields:
+Through pylibs-stats, which validates and derives the geometry fields:
 
 ```python
-from pylibs.core import api
+from pylibs_stats.core import api
 
 api.write_libs(
     "converted.libs",
@@ -162,7 +162,7 @@ convention is the caller's responsibility.
 
 ## Validity checklist
 
-A file pylibs will process:
+A file pylibs-stats will process:
 
 1. is a zip holding `data.npy`, `wavelengths.npy` and `params.npy`;
 2. `data` is 2D, float32 or float64, finite;

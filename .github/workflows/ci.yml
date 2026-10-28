@@ -20,7 +20,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       # dev extras only -- .ELE support needs a private repo this workflow has no credentials for
-      - name: Install pylibs
+      - name: Install pylibs-stats
         run: pip install -e ".[dev]"
 
       - name: ruff check

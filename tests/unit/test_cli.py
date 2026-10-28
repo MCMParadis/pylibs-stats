@@ -15,12 +15,12 @@ import numpy as np
 import pytest
 from typer.testing import CliRunner
 
-from pylibs.core import api
-from pylibs.core.io.writers.libs_writer import write_libs_file
-from pylibs.core.logging import LOG_FILENAME
-from pylibs.core.pipeline.metrics import METRIC_NAMES_2D
-from pylibs.core.pipeline.regression import _mae_permutation_p_value, fit_least_squares
-from pylibs.interfaces.cli.app import app
+from pylibs_stats.core import api
+from pylibs_stats.core.io.writers.libs_writer import write_libs_file
+from pylibs_stats.core.logging import LOG_FILENAME
+from pylibs_stats.core.pipeline.metrics import METRIC_NAMES_2D
+from pylibs_stats.core.pipeline.regression import _mae_permutation_p_value, fit_least_squares
+from pylibs_stats.interfaces.cli.app import app
 
 runner = CliRunner()
 
@@ -485,7 +485,7 @@ def test_add_element_features_only_default_and_unknown_element(tmp_path):
     # ...and that distinction really is on the project log, at INFO -- below
     # the console handler's own threshold, so a standing element list doesn't
     # shout on every run about the ones this table has no lines for
-    log = (root / "pylibs.log").read_text()
+    log = (root / "pylibs_stats.log").read_text()
     assert "No peaks for element 'Zz'" in log
     assert "No peak flagged as the default for element 'C'" in log
     assert " ERROR " not in log
@@ -693,8 +693,8 @@ def _write_masked_sample(path, mask, n_pix=4):
 def test_to_raster_masked_placement_and_guards():
     """The reconstruction itself: serpentine order, NaN outside, and the two
     ways a caller can hand over a mask that can't place its values."""
-    from pylibs.core.exceptions import ReportError
-    from pylibs.core.reporting.raster import to_raster
+    from pylibs_stats.core.exceptions import ReportError
+    from pylibs_stats.core.reporting.raster import to_raster
 
     # a 3x3 frame with the middle row fully scanned and one cell above/below
     mask = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=bool)
@@ -721,8 +721,8 @@ def test_to_raster_masked_placement_and_guards():
 
 def test_frame_shape_counts_pixels_or_intervals():
     """Some headers count the intervals between pixels rather than the pixels."""
-    from pylibs.core.exceptions import ReportError
-    from pylibs.core.reporting.raster import frame_shape
+    from pylibs_stats.core.exceptions import ReportError
+    from pylibs_stats.core.reporting.raster import frame_shape
 
     assert frame_shape({"HeightPixels": 3, "WidthPixels": 4}, 12) == (3, 4)
     # a 400x400 .ELE scan whose header says 399x399
@@ -920,8 +920,8 @@ def test_mask_ignored_when_it_cannot_place_scans(tmp_path):
 def test_local_bootstrap_block_stays_inside_the_mask():
     """Every 'local' block on a round sample is npix real, distinct scans --
     never a rim block padded with unscanned cells."""
-    from pylibs.core.exceptions import BootstrapError
-    from pylibs.core.pipeline.bootstrap.resampling import resample_local
+    from pylibs_stats.core.exceptions import BootstrapError
+    from pylibs_stats.core.pipeline.bootstrap.resampling import resample_local
 
     mask = _disc_mask(21, 9.5)
     n_scans = int(mask.sum())
@@ -2068,7 +2068,7 @@ def test_pack_snapshot_disambiguates_a_colliding_timestamp(tmp_path):
     runner.invoke(app, ["project", "add-feature", "demo", "A300", "--root", str(root)])
     runner.invoke(app, ["project", "run-pipeline", "demo", "sample001", "--root", str(root)])
 
-    from pylibs.core.io.snapshot import pack_snapshot_results
+    from pylibs_stats.core.io.snapshot import pack_snapshot_results
 
     first = pack_snapshot_results(root, "demo", "20260101-000000-000")
     second = pack_snapshot_results(root, "demo", "20260101-000000-000")
@@ -2461,7 +2461,7 @@ def test_debug_flag_raises_console_and_file_log_level(tmp_path):
     root = tmp_path / "proj"
 
     runner.invoke(app, ["--debug", "project", "create", "demo", "--root", str(root)])
-    logger = logging.getLogger("pylibs")
+    logger = logging.getLogger("pylibs_stats")
     assert logger.level == logging.DEBUG
     file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
     console_handlers = [h for h in logger.handlers if h not in file_handlers]
@@ -2609,7 +2609,7 @@ def test_use_peak_table_workflow(tmp_path):
     # in the project log. It used to be logged at WARNING too, which printed
     # the same fact twice -- stdout from the CLI, stderr from the logger.
     assert result.output.count("Replaced the previous peak table") == 1
-    assert "Replaced the peak table" in (root / "pylibs.log").read_text()
+    assert "Replaced the peak table" in (root / "pylibs_stats.log").read_text()
 
     # registering the project's own copy is a safe no-op, not a truncating
     # self-copy -- a natural thing to type after editing it in place

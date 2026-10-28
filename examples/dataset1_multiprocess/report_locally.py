@@ -5,7 +5,7 @@
 # reports, exactly mirroring dataset1_example.py's own second half. Run
 # after both parallel steps have finished:
 #
-#   pylibs run examples/dataset1_multiprocess/report_locally.py
+#   pylibs-stats run examples/dataset1_multiprocess/report_locally.py
 #
 # only generate the (slower) per-sample diagnostics PDF for one ablation
 # layer per physical sample, to keep this quick to run

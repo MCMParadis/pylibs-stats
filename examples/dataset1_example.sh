@@ -2,7 +2,7 @@
 # The CLI counterpart of dataset1_example.py: the same project, the same 21
 # samples and 16 features, the same all-metrics sweep, correlations,
 # calibration curves and applied quantification maps -- driven entirely through
-# `pylibs project ...` instead of DSL verbs. Either one alone produces the same
+# `pylibs-stats project ...` instead of DSL verbs. Either one alone produces the same
 # project; this exists to show the command surface, and to be pasted from when
 # scripting a real run outside Python.
 #
@@ -99,21 +99,21 @@ wants_report() {
     return 1
 }
 
-command -v pylibs >/dev/null 2>&1 ||
-    die "pylibs is not on PATH -- activate the venv, or run: pip install -e ."
+command -v pylibs-stats >/dev/null 2>&1 ||
+    die "pylibs-stats is not on PATH -- activate the venv, or run: pip install -e ."
 [ -f "$CSV_PATH" ] || die "missing $CSV_PATH (run this from a checkout with data/)"
 [ -f "$PEAK_TABLE" ] || die "missing $PEAK_TABLE"
 
 # ---------------------------------------------------------------- project ---
 
 echo "== creating project $PROJECT_NAME =="
-pylibs project create "$PROJECT_NAME" --description "$DESCRIPTION" ||
+pylibs-stats project create "$PROJECT_NAME" --description "$DESCRIPTION" ||
     die "could not create project"
 
 # Copied into the project, so everything after this resolves peak ids
 # against the project's own copy -- no flag is threaded anywhere else.
 # Must precede add-feature.
-pylibs project use-peak-table "$PROJECT_NAME" "$PEAK_TABLE" ||
+pylibs-stats project use-peak-table "$PROJECT_NAME" "$PEAK_TABLE" ||
     die "could not register the peak table"
 
 # Each sampleX_Y.libs is one ablation layer of physical sample X. The default
@@ -124,13 +124,13 @@ pylibs project use-peak-table "$PROJECT_NAME" "$PEAK_TABLE" ||
 # scan ignores it.
 echo
 echo "== registering samples from $DATA_DIR =="
-pylibs project add-samples-from-dir "$PROJECT_NAME" "$DATA_DIR" ||
+pylibs-stats project add-samples-from-dir "$PROJECT_NAME" "$DATA_DIR" ||
     die "could not register samples"
 
 echo
 echo "== registering features =="
 for expression in "${FEATURES[@]}"; do
-    pylibs project add-feature "$PROJECT_NAME" "$expression" ||
+    pylibs-stats project add-feature "$PROJECT_NAME" "$expression" ||
         die "could not add feature $expression"
 done
 
@@ -140,7 +140,7 @@ done
 # so this is the shell's stand-in for the .py's LISTSAMPLES loop: one
 # "<sample_id> <sample_stem>" pair per line, read back rather than assumed.
 mapfile -t SAMPLES < <(
-    pylibs project list-samples "$PROJECT_NAME" |
+    pylibs-stats project list-samples "$PROJECT_NAME" |
         sed -n 's/^  \([^ ]*\) (name=[^,]*, stem=\([^)]*\)):.*/\1 \2/p'
 )
 [ "${#SAMPLES[@]}" -gt 0 ] || die "no samples registered -- nothing to process"
@@ -150,10 +150,10 @@ echo "== running the pipeline for ${#SAMPLES[@]} samples =="
 for entry in "${SAMPLES[@]}"; do
     read -r sample_id stem <<<"$entry"
     echo "-- $stem ($sample_id)"
-    pylibs project run-pipeline "$PROJECT_NAME" "$sample_id" ||
+    pylibs-stats project run-pipeline "$PROJECT_NAME" "$sample_id" ||
         die "pipeline failed for $sample_id"
     if wants_report "$stem"; then
-        pylibs project generate-feature-report "$PROJECT_NAME" "$sample_id" --save-pdf ||
+        pylibs-stats project generate-feature-report "$PROJECT_NAME" "$sample_id" --save-pdf ||
             die "feature report failed for $sample_id"
     fi
 done
@@ -166,7 +166,7 @@ done
 # Mode calibration curves used below, so those need no separate per-metric run.
 echo
 echo "== all-metrics regression sweep (the slow step) =="
-pylibs project compute-regressions "$PROJECT_NAME" "$CSV_PATH" \
+pylibs-stats project compute-regressions "$PROJECT_NAME" "$CSV_PATH" \
     --all-metrics --n-permutations "$N_PERMUTATIONS" --n-processes "$N_PROCESSES" ||
     die "regression sweep failed"
 
@@ -174,16 +174,16 @@ pylibs project compute-regressions "$PROJECT_NAME" "$CSV_PATH" \
 
 echo
 echo "== correlations against the known B/Ca concentrations =="
-pylibs project compute-correlations "$PROJECT_NAME" "$CSV_PATH" ||
+pylibs-stats project compute-correlations "$PROJECT_NAME" "$CSV_PATH" ||
     die "could not compute correlations"
 
 # Column names can contain spaces ("c_B / wt%"), so read whole lines, never $1.
 mapfile -t CORRELATION_COLUMNS < <(
-    pylibs project list-correlations "$PROJECT_NAME" | sed -n 's/^  //p'
+    pylibs-stats project list-correlations "$PROJECT_NAME" | sed -n 's/^  //p'
 )
 for column_name in "${CORRELATION_COLUMNS[@]}"; do
     echo "-- $column_name"
-    pylibs project generate-correlations-report "$PROJECT_NAME" "$column_name" ||
+    pylibs-stats project generate-correlations-report "$PROJECT_NAME" "$column_name" ||
         die "correlations report failed for $column_name"
 done
 
@@ -192,11 +192,11 @@ done
 echo
 echo "== calibration-curve reports (${#CALIBRATION_CURVES[@]} curated pairs per column) =="
 mapfile -t REGRESSION_COLUMNS < <(
-    pylibs project list-regressions "$PROJECT_NAME" | sed -n 's/^  //p'
+    pylibs-stats project list-regressions "$PROJECT_NAME" | sed -n 's/^  //p'
 )
 for column_name in "${REGRESSION_COLUMNS[@]}"; do
     echo "-- $column_name"
-    pylibs project generate-regression-report "$PROJECT_NAME" "$column_name" \
+    pylibs-stats project generate-regression-report "$PROJECT_NAME" "$column_name" \
         "${SELECT_ARGS[@]}" ||
         die "regression report failed for $column_name"
 done
@@ -212,10 +212,10 @@ echo "== applying regressions to every sample =="
 for entry in "${SAMPLES[@]}"; do
     read -r sample_id stem <<<"$entry"
     echo "-- $stem ($sample_id)"
-    pylibs project apply-regressions "$PROJECT_NAME" "$sample_id" "${SELECT_ARGS[@]}" ||
+    pylibs-stats project apply-regressions "$PROJECT_NAME" "$sample_id" "${SELECT_ARGS[@]}" ||
         die "apply-regressions failed for $sample_id"
     if wants_report "$stem"; then
-        pylibs project generate-applied-regression-report "$PROJECT_NAME" "$sample_id" ||
+        pylibs-stats project generate-applied-regression-report "$PROJECT_NAME" "$sample_id" ||
             die "applied-regression report failed for $sample_id"
     fi
 done

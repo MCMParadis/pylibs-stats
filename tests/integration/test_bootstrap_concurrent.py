@@ -18,10 +18,10 @@ import numpy as np
 import pytest
 import zarr
 
-from pylibs.core import api
-from pylibs.core.io.store import BOOTSTRAP_GROUP, RESULTS_DIRNAME, ResultsStore
-from pylibs.core.io.writers.libs_writer import write_libs_file
-from pylibs.core.pipeline.metrics import METRIC_NAMES
+from pylibs_stats.core import api
+from pylibs_stats.core.io.store import BOOTSTRAP_GROUP, RESULTS_DIRNAME, ResultsStore
+from pylibs_stats.core.io.writers.libs_writer import write_libs_file
+from pylibs_stats.core.pipeline.metrics import METRIC_NAMES
 
 N_WORKERS = 3
 N_ITERATIONS = 12
@@ -55,7 +55,7 @@ def test_concurrent_sharded_run_bootstrap_completes_without_corruption(tmp_path)
             [
                 sys.executable,
                 "-c",
-                "from pylibs.interfaces.cli.app import app; app()",
+                "from pylibs_stats.interfaces.cli.app import app; app()",
                 "project",
                 "run-bootstrap",
                 "demo",

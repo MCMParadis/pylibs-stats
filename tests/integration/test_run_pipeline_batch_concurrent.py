@@ -27,10 +27,10 @@ import sys
 
 import numpy as np
 
-from pylibs.core import api
-from pylibs.core.io.store import RESULTS_DIRNAME, ResultsStore
-from pylibs.core.io.writers.libs_writer import write_libs_file
-from pylibs.core.project.project import Project
+from pylibs_stats.core import api
+from pylibs_stats.core.io.store import RESULTS_DIRNAME, ResultsStore
+from pylibs_stats.core.io.writers.libs_writer import write_libs_file
+from pylibs_stats.core.project.project import Project
 
 N_WORKERS = 3
 N_SAMPLES = 9
@@ -60,7 +60,7 @@ def test_concurrent_sharded_run_pipeline_batch_completes_without_corruption(tmp_
             [
                 sys.executable,
                 "-c",
-                "from pylibs.interfaces.cli.app import app; app()",
+                "from pylibs_stats.interfaces.cli.app import app; app()",
                 "project",
                 "run-pipeline-batch",
                 "demo",

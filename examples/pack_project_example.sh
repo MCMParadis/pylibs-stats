@@ -36,8 +36,8 @@ die() {
     exit 1
 }
 
-command -v pylibs >/dev/null 2>&1 ||
-    die "pylibs is not on PATH -- activate the venv, or run: pip install -e ."
+command -v pylibs-stats >/dev/null 2>&1 ||
+    die "pylibs-stats is not on PATH -- activate the venv, or run: pip install -e ."
 [ -f "$ROOT/registry.json" ] ||
     die "no project at $ROOT -- build one first: ./examples/dataset1_example.sh"
 [ -d "$ROOT/results.zarr" ] ||
@@ -51,7 +51,7 @@ command -v pylibs >/dev/null 2>&1 ||
 # produced it. The original directory is left untouched.
 echo "== 1. pack: one archive for a one-off handoff =="
 before_files=$(find "$ROOT/results.zarr" -type f | wc -l)
-pylibs project pack "$PROJECT_NAME" || die "pack failed"
+pylibs-stats project pack "$PROJECT_NAME" || die "pack failed"
 
 archive="$ROOT/results.zarr.zip"
 [ -f "$archive" ] || die "expected an archive at $archive"
@@ -64,7 +64,7 @@ echo "   archive:      1 file, $(du -sh "$archive" | cut -f1)"
 # receiving end, not just after writing it.
 echo
 echo "== 2. verify-pack: is the archive intact? =="
-pylibs project verify-pack "$archive" || die "verify-pack failed"
+pylibs-stats project verify-pack "$archive" || die "verify-pack failed"
 
 # ------------------------------------------- 2. the iterative alternative ---
 
@@ -75,18 +75,18 @@ pylibs project verify-pack "$archive" || die "verify-pack failed"
 # each is a restorable point in time.
 echo
 echo "== 3. pack-snapshot: a timestamped, never-overwritten point in time =="
-pylibs project pack-snapshot "$PROJECT_NAME" || die "pack-snapshot failed"
+pylibs-stats project pack-snapshot "$PROJECT_NAME" || die "pack-snapshot failed"
 
 echo
 echo "== 4. list-snapshots: every snapshot, oldest first =="
-pylibs project list-snapshots "$PROJECT_NAME" || die "list-snapshots failed"
+pylibs-stats project list-snapshots "$PROJECT_NAME" || die "list-snapshots failed"
 
 # Manifests are what make an archive self-describing, and `runs index` finds
 # every one under a directory tree -- handy for answering "what do I actually
 # have on this disk, and which commit produced it?"
 echo
 echo "== 5. runs index: every packed archive found under projects/ =="
-pylibs runs index projects || die "runs index failed"
+pylibs-stats runs index projects || die "runs index failed"
 
 # ---------------------------------------------------- 3. the way back in ---
 
@@ -102,13 +102,13 @@ echo
 echo "== 6. use-snapshot: restore a snapshot as the working results.zarr =="
 if [ "$DEMO_USE_SNAPSHOT" = "1" ]; then
     echo "   DEMO_USE_SNAPSHOT=1 -- running it for real (results.zarr will be replaced)"
-    pylibs project use-snapshot "$PROJECT_NAME" --force || die "use-snapshot failed"
+    pylibs-stats project use-snapshot "$PROJECT_NAME" --force || die "use-snapshot failed"
 else
     echo "   Not run: it would replace $ROOT/results.zarr. The command is:"
     echo
-    echo "     pylibs project use-snapshot $PROJECT_NAME              # newest snapshot"
-    echo "     pylibs project use-snapshot $PROJECT_NAME --timestamp <UTC timestamp>"
-    echo "     pylibs project use-snapshot $PROJECT_NAME --force      # over an existing results.zarr"
+    echo "     pylibs-stats project use-snapshot $PROJECT_NAME              # newest snapshot"
+    echo "     pylibs-stats project use-snapshot $PROJECT_NAME --timestamp <UTC timestamp>"
+    echo "     pylibs-stats project use-snapshot $PROJECT_NAME --force      # over an existing results.zarr"
     echo
     echo "   Re-run this script with DEMO_USE_SNAPSHOT=1 to actually execute it."
 fi

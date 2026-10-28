@@ -3,10 +3,14 @@ import logging
 import numpy as np
 import pytest
 
-from pylibs.core.exceptions import ExpressionError
-from pylibs.core.features.expression import evaluate_expression, split_ratio, validate_expression
-from pylibs.core.features.identity import feature_identity_hash
-from pylibs.core.features.peak_table import PeakEntry
+from pylibs_stats.core.exceptions import ExpressionError
+from pylibs_stats.core.features.expression import (
+    evaluate_expression,
+    split_ratio,
+    validate_expression,
+)
+from pylibs_stats.core.features.identity import feature_identity_hash
+from pylibs_stats.core.features.peak_table import PeakEntry
 
 TABLE = {
     "Fe438": PeakEntry(element="Fe", id="Fe438", peak=438.4, continuum=437.8),

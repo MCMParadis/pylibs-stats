@@ -3,14 +3,14 @@ import math
 import numpy as np
 import pytest
 
-from pylibs.core.exceptions import DistributionError
-from pylibs.core.pipeline import metrics as metrics_module
-from pylibs.core.pipeline.distributions import (
+from pylibs_stats.core.exceptions import DistributionError
+from pylibs_stats.core.pipeline import metrics as metrics_module
+from pylibs_stats.core.pipeline.distributions import (
     compute_distribution_1d,
     compute_distribution_2d,
     joint_histogram,
 )
-from pylibs.core.pipeline.metrics import gini_index, kl_divergence_histograms
+from pylibs_stats.core.pipeline.metrics import gini_index, kl_divergence_histograms
 
 
 def test_kl_divergence_histograms_identical_is_zero():

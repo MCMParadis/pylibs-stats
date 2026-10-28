@@ -3,8 +3,8 @@
     pip install astropy           # optional, only for this example
     python examples/conversion/fits_to_libs.py path/to/cube.fits
 
-`astropy` is NOT a pylibs dependency. It is used here only to read the FITS
-file; pylibs itself never sees the FITS format.
+`astropy` is NOT a pylibs-stats dependency. It is used here only to read the FITS
+file; pylibs-stats itself never sees the FITS format.
 
 A FITS spectral cube is conventionally (spectral, y, x) -- the spectral axis
 first, which is the reverse of ENVI. The wavelength axis is reconstructed from
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pylibs.core import api
+from pylibs_stats.core import api
 
 
 def wavelength_axis(header, n_bands: int) -> np.ndarray:

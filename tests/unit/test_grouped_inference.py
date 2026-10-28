@@ -14,8 +14,8 @@ import numpy as np
 import pytest
 from scipy.stats import linregress, t
 
-from pylibs.core import api
-from pylibs.core.pipeline.regression import (
+from pylibs_stats.core import api
+from pylibs_stats.core.pipeline.regression import (
     INFERENCE_VERSION,
     _group_indices,
     confidence_band_half_width,

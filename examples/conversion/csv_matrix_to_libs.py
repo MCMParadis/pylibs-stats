@@ -2,7 +2,7 @@
 
     python examples/conversion/csv_matrix_to_libs.py
 
-No optional dependencies: the CSV reader is part of pylibs.
+No optional dependencies: the CSV reader is part of pylibs-stats.
 
 Expected layout -- one row per pixel, two coordinate columns, then one column
 per wavelength, with the header giving each column's wavelength:
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pylibs.core import api
+from pylibs_stats.core import api
 
 OUT_DIR = Path(__file__).resolve().parent / "out"
 

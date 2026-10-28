@@ -11,7 +11,7 @@
 # Prerequisites (run once, NOT as part of this array job -- array tasks only
 # ever call compute-regressions below):
 #
-#   pylibs run examples/dataset1_multiprocess/setup_project.py
+#   pylibs-stats run examples/dataset1_multiprocess/setup_project.py
 #   ./examples/dataset1_multiprocess/run_pipeline_parallel.sh   # or its own sbatch
 #
 # sbatch won't create --output's directory for you, so make it before your
@@ -45,7 +45,7 @@ set -uo pipefail
 cd "$SLURM_SUBMIT_DIR" || exit 1
 
 module load python/3.11   # placeholder -- match this to the cluster's module system
-source .venv/bin/activate # or wherever your pylibs virtualenv lives
+source .venv/bin/activate # or wherever your pylibs-stats virtualenv lives
 
 PROJECT_NAME="dataset1_multiprocess_project"
 ROOT="projects/$PROJECT_NAME"
@@ -67,7 +67,7 @@ CSV_PATH="data/dataset1/dataset1_concentrations.csv"
 # locking -- every cell writes to its own disjoint
 # regressions/<column>/<metric>/<feature_id>/ zarr group, so concurrent
 # writers never race (see pipeline.regression_run's own module docstring).
-pylibs project compute-regressions "$PROJECT_NAME" "$CSV_PATH" \
+pylibs-stats project compute-regressions "$PROJECT_NAME" "$CSV_PATH" \
     --root "$ROOT" \
     --all-metrics \
     --worker-index "$SLURM_ARRAY_TASK_ID" \

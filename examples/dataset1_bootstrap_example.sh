@@ -1,7 +1,7 @@
 #!/bin/bash
 # The CLI counterpart of dataset1_bootstrap_example.py: the same project, the
 # same 21 samples and 11 features, the same four bootstrap configs, driven
-# entirely through `pylibs project ...` instead of DSL verbs. Either one alone
+# entirely through `pylibs-stats project ...` instead of DSL verbs. Either one alone
 # produces the same project -- this exists to show the command surface, and to
 # be pasted from when scripting a real run outside Python.
 #
@@ -57,18 +57,18 @@ die() {
     exit 1
 }
 
-command -v pylibs >/dev/null 2>&1 ||
-    die "pylibs is not on PATH -- activate the venv, or run: pip install -e ."
+command -v pylibs-stats >/dev/null 2>&1 ||
+    die "pylibs-stats is not on PATH -- activate the venv, or run: pip install -e ."
 
 # ---------------------------------------------------------------- project ---
 
 echo "== creating project $PROJECT_NAME =="
-pylibs project create "$PROJECT_NAME" --description "$DESCRIPTION" ||
+pylibs-stats project create "$PROJECT_NAME" --description "$DESCRIPTION" ||
     die "could not create project"
 
 # Copied into the project; must precede add-feature.
 [ -f "$PEAK_TABLE" ] || die "missing $PEAK_TABLE"
-pylibs project use-peak-table "$PROJECT_NAME" "$PEAK_TABLE" ||
+pylibs-stats project use-peak-table "$PROJECT_NAME" "$PEAK_TABLE" ||
     die "could not register the peak table"
 
 echo
@@ -79,7 +79,7 @@ for x in 1 2 3 4 5 6 7; do
         [ -f "$path" ] || die "missing raw file $path (run this from a checkout with data/)"
         # --sample-name is the correlations join key, deliberately shared by a
         # sample's three ablation layers; the stem stays per-file and unique.
-        pylibs project add-sample "$PROJECT_NAME" "$path" --sample-name "sample${x}" ||
+        pylibs-stats project add-sample "$PROJECT_NAME" "$path" --sample-name "sample${x}" ||
             die "could not add $path"
     done
 done
@@ -87,7 +87,7 @@ done
 echo
 echo "== registering features =="
 for expression in "${FEATURES[@]}"; do
-    pylibs project add-feature "$PROJECT_NAME" "$expression" ||
+    pylibs-stats project add-feature "$PROJECT_NAME" "$expression" ||
         die "could not add feature $expression"
 done
 
@@ -97,7 +97,7 @@ done
 # so this is the shell's stand-in for the .py's LISTSAMPLES loop: one
 # "<sample_id> <sample_stem>" pair per line, read back rather than assumed.
 mapfile -t SAMPLES < <(
-    pylibs project list-samples "$PROJECT_NAME" |
+    pylibs-stats project list-samples "$PROJECT_NAME" |
         sed -n 's/^  \([^ ]*\) (name=[^,]*, stem=\([^)]*\)):.*/\1 \2/p'
 )
 [ "${#SAMPLES[@]}" -gt 0 ] || die "no samples registered -- nothing to process"
@@ -107,7 +107,7 @@ echo "== running the pipeline for ${#SAMPLES[@]} samples =="
 for entry in "${SAMPLES[@]}"; do
     read -r sample_id _stem <<<"$entry"
     echo "-- $sample_id"
-    pylibs project run-pipeline "$PROJECT_NAME" "$sample_id" ||
+    pylibs-stats project run-pipeline "$PROJECT_NAME" "$sample_id" ||
         die "pipeline failed for $sample_id"
 done
 
@@ -124,7 +124,7 @@ for method in random local; do
         args=(--npix "$NPIX" --n-iterations "$N_ITERATIONS")
         [ "$shuffle" = "true" ] && args+=(--shuffle)
         # "Bootstrap config 'bootstrap001' ready in project '...': method=..."
-        out=$(pylibs project add-bootstrap-config "$PROJECT_NAME" "$method" "${args[@]}") ||
+        out=$(pylibs-stats project add-bootstrap-config "$PROJECT_NAME" "$method" "${args[@]}") ||
             die "could not register the $method/shuffle=$shuffle config"
         echo "$out"
         bootstrap_id=$(sed -n "s/^Bootstrap config '\([^']*\)'.*/\1/p" <<<"$out")
@@ -146,14 +146,14 @@ for entry in "${SAMPLES[@]}"; do
         echo "-- $stem ($sample_id) / $bootstrap_id ${save_csv:+[+csv]}"
         args=("$PROJECT_NAME" "$sample_id" "$bootstrap_id")
         [ -n "$save_csv" ] && args+=("$save_csv")
-        pylibs project run-bootstrap "${args[@]}" ||
+        pylibs-stats project run-bootstrap "${args[@]}" ||
             die "bootstrap $bootstrap_id failed for $sample_id"
     done
 done
 
 echo
 echo "== done =="
-pylibs project list-bootstrap-configs "$PROJECT_NAME"
+pylibs-stats project list-bootstrap-configs "$PROJECT_NAME"
 for bootstrap_id in "${BOOTSTRAP_IDS[@]}"; do
-    pylibs project bootstrap-status "$PROJECT_NAME" "$bootstrap_id"
+    pylibs-stats project bootstrap-status "$PROJECT_NAME" "$bootstrap_id"
 done

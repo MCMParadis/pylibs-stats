@@ -10,7 +10,7 @@ dist/
 .coverage
 htmlcov/
 
-# default pylibs project output directory
+# default pylibs-stats project output directory
 /projects/
 
 # pipeline results (Zarr stores are a working format, never archived)

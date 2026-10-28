@@ -4,8 +4,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project purpose
 
-`pylibs`: statistical processing of LIBS (Laser-Induced Breakdown Spectroscopy) imaging data,
+`pylibs-stats`: statistical processing of LIBS (Laser-Induced Breakdown Spectroscopy) imaging data,
 exposed as a CLI, a small DSL, and (eventually) other interfaces, all built on one façade module.
+
+## Naming
+
+Hyphen for what a user types, underscore for what Python imports:
+
+| | spelling |
+|---|---|
+| display name, distribution, CLI command | `pylibs-stats` |
+| import package, façade, logger, log file | `pylibs_stats` |
+
+Lowercase everywhere, even starting a sentence or a heading. "LIBS" the
+technique stays capitalised.
+
+**The logger name must be `pylibs_stats`, never hyphenated.** `get_logger`
+passes `__name__`, so every module logger is `pylibs_stats.<module>`. A
+hyphenated parent would not be their ancestor, the project file handler
+would receive nothing, and every project's log would be silently empty. A
+test asserts the name.
+
+`PylibsError` and its subclasses keep the old spelling, as do the
+`pylibs_version`/`pylibs_tag`/`pylibs_commit`/`pylibs_dirty` keys in
+`benchmarks/results/environment.json`. Neither collides with anything:
+the exceptions live inside our own namespace, and the keys are a stored
+schema whose committed results file would have to be regenerated to change
+them.
+
+The report logo lives in the package data (`core/reporting/data/`) because
+`pdf.cover_page` loads it at runtime through `importlib.resources` and it
+has to ship in the wheel. The README's two transparent variants live in
+`docs/assets/`, outside the package: nothing reads them at runtime and
+GitHub needs a repo-relative path.
 
 ## Install / build / lint / test
 
@@ -27,12 +58,12 @@ CI-equivalent local check before considering work done: `ruff check . && ruff fo
 ## Architecture
 
 **One rule drives the whole layout: every interface (CLI, DSL, future GUI/DB) calls through
-`pylibs.core.api` — nothing outside `core/` ever imports `core.pipeline`, `core.reporting`, or
+`pylibs_stats.core.api` — nothing outside `core/` ever imports `core.pipeline`, `core.reporting`, or
 `core.io` internals directly.** When adding a capability, implement it in `core/`, expose it as a
 function on `core.api`, then add a thin CLI command and DSL verb that just call that function.
 
 ```
-src/pylibs/
+src/pylibs_stats/
   core/
     api.py              # the façade -- the only module CLI/DSL/etc. are allowed to import from
     config.py           # pydantic models: ProjectConfig, SampleConfig, FeatureConfig
@@ -50,9 +81,10 @@ src/pylibs/
                         # command runs); configure_console_logging(debug)/configure_project_
                         # logging(root) are the only places handlers get attached -- the latter,
                         # called by Project.create/load, additionally points a per-project file
-                        # handler (<root>/pylibs.log) at the "pylibs" logger, switching file
+                        # handler (<root>/pylibs_stats.log) at the "pylibs_stats" logger, switching file
                         # target when a different project is loaded in the same process
-    project/            # Registry (registry.json on disk) + Project wrapper. Every mutator
+    project/            # registry.py (Registry, registry.json on disk) + project.py (the
+                        # Project wrapper over it). Every mutator
                         # goes through Registry._locked_update(): flock, re-read from disk,
                         # mutate that, save, adopt -- because save() rewrites the WHOLE file,
                         # so mutating a snapshot taken at load time drops any concurrent
@@ -308,11 +340,18 @@ src/pylibs/
                              # derives (width_img, height_img) in mm from a raw file's params --
                              # direct WidthIMG/HeightIMG, else Resolution (mm/pixel) * pixel count,
                              # else (None, None) -- shared by report.py and applied_regression_report.py
-      data/logo.png         # the PyLIBS wordmark drawn on every report's cover page by
-                             # pdf.cover_page(); bundled into the wheel by hatchling's
-                             # default "everything under src/pylibs" rule, so it needs no
-                             # package-data stanza; read via importlib.resources
-                             # (pdf._logo_path)
+      data/                 # pylibs_stats-logo.png: the wordmark drawn on every report's
+                             # cover page by pdf.cover_page(); bundled into the wheel by
+                             # hatchling's default "everything under src/pylibs_stats" rule,
+                             # so it needs no package-data stanza; read via
+                             # importlib.resources (pdf._logo_path). The white-background
+                             # variant, since a report page is white. The transparent pair
+                             # the README uses lives in docs/assets/ instead -- outside the
+                             # package, because nothing at runtime reads it.
+                             # Aspect is 4.455:1, and cover_page's logo box is sized to
+                             # match: imshow letterboxes rather than stretches, so a
+                             # replacement either keeps that ratio or needs the box changed
+                             # with it
   interfaces/
     cli/app.py            # Typer app; every command is a thin wrapper over core.api; a root
                           # @app.callback() (`main`) handles the global --debug flag, firing
@@ -329,7 +368,7 @@ src/pylibs/
 A **project** (`core/project`) is a directory with a `registry.json` (samples + registered feature
 expressions), a `peak_table.csv` (the project's own copy of a peak table, put there by
 `use_peak_table`/`USEPEAKTABLE` -- see below), a `results.zarr` (per-sample computed results,
-written by the pipeline), and a `pylibs.log` (every log message emitted while this project was
+written by the pipeline), and a `pylibs_stats.log` (every log message emitted while this project was
 the active one, at INFO level by default or DEBUG with the CLI's `--debug` flag -- see
 `configure_project_logging`). A **sample**
 is one raw LIBS file (`.libs` or `.ELE`; `.libs` is a plain uncompressed npz archive holding
@@ -342,7 +381,7 @@ other fields as `name_parts`; a file the template can't parse is logged and skip
 is a named expression over peak ids (e.g. `Fe438`, `Fe438 / Li670`, or a nested ratio like
 `(Fe438/Li670)/(Fe438/Li670+P214/Li670)`). Every peak id in an expression resolves against the
 **project's own** peak table, which must be registered first: `use_peak_table`/`USEPEAKTABLE`/
-`pylibs project use-peak-table` copies a CSV to `<project_root>/peak_table.csv`, and
+`pylibs-stats project use-peak-table` copies a CSV to `<project_root>/peak_table.csv`, and
 `add_feature`/`add_element_features`/`run_pipeline`/`run_pipeline_batch`/
 `generate_feature_report` all read that copy -- there is no per-command `--peak-table` flag and no
 bundled fallback, so calling it out of order raises rather than silently resolving against
@@ -355,13 +394,13 @@ truth either way). `run_bootstrap` needs no table at all: it reads feature ident
 (`add_feature`) or a whole element at a time (`add_element_features`: every peak the peak table
 lists for `"Fe"`, or just its flagged default, each becoming its own bare-peak feature -- an
 element that contributes nothing is skipped, following `validate_expression`'s log-don't-raise
-precedent -- but at INFO, i.e. to `pylibs.log` and not the console, since passing a standing list
+precedent -- but at INFO, i.e. to `pylibs_stats.log` and not the console, since passing a standing list
 of elements and letting the ones the table has no lines for fall away is ordinary use, not a typo
 worth interrupting a run over; the summary line names any that were skipped).
 
 `results.zarr` is a directory tree with one small file per chunk -- fine locally, bad for quota/
 transfer at scale (a real project can have 100k+ files; see `core/io/pack.py`'s module docstring).
-`pack_project`/`PACKPROJECT` (CLI `pylibs project pack` -- the one command whose CLI name
+`pack_project`/`PACKPROJECT` (CLI `pylibs-stats project pack` -- the one command whose CLI name
 doesn't mirror its api/DSL one, unlike `pack_snapshot`/`PACKSNAPSHOT`/`pack-snapshot`)
 consolidates it into one `.zarr.zip`, still randomly readable via
 zarr's own `ZipStore`, for a one-off handoff; `pack_snapshot`/`PACKSNAPSHOT` and `use_snapshot`/
@@ -620,13 +659,13 @@ iteration's metrics -- including not-yet-computed ones, as blank cells -- to a f
 ## Conventions
 
 - Only commit when explicitly asked; stage explicit file lists, never `git add -A`/`git add .`.
-- `.ELE` support depends on the private `libs_importer` package (`pip install pylibs[ele]`, needs
-  SSH access to a private repo) -- `pylibs` must still work fully without it for `.libs` files.
+- `.ELE` support depends on the private `libs_importer` package (`pip install pylibs-stats[ele]`, needs
+  SSH access to a private repo) -- `pylibs-stats` must still work fully without it for `.libs` files.
 - `examples/` scripts run against real data in `data/` (e.g. `data/dataset1/sample1_1.libs`), not
   toy fixtures -- there's no separate `examples/data/`. The exception is `examples/conversion/`,
   which shows ENVI/FITS/CSV-matrix ingestion through `api.write_libs`: those need source files in
   formats this repo doesn't ship, so the CSV one synthesises its own and the other two take a path.
-  They import `spectral`/`astropy`, which are NOT pylibs dependencies and are used only there --
+  They import `spectral`/`astropy`, which are NOT pylibs-stats dependencies and are used only there --
   no ENVI/FITS/SPC reader belongs in `core/`, since `write_libs` is the supported way in.
 - The test suite is deliberately small (`tests/unit/test_expression.py` for the feature-expression
   parser, `tests/unit/test_cli.py` for dense CLI-integration workflow tests, plus `tests/integration/`

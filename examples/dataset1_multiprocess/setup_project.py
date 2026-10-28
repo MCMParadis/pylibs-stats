@@ -6,10 +6,10 @@
 # its own job, reporting done locally afterward on the transferred
 # results.zarr). Full sequence, from the repo root:
 #
-#   pylibs run examples/dataset1_multiprocess/setup_project.py
+#   pylibs-stats run examples/dataset1_multiprocess/setup_project.py
 #   ./examples/dataset1_multiprocess/run_pipeline_parallel.sh
 #   ./examples/dataset1_multiprocess/compute_regressions_parallel.sh
-#   pylibs run examples/dataset1_multiprocess/report_locally.py
+#   pylibs-stats run examples/dataset1_multiprocess/report_locally.py
 #
 # See run_pipeline_slurm.sbatch / compute_regressions_slurm.sbatch in this
 # same folder for the real SLURM-array-job version of the two parallel

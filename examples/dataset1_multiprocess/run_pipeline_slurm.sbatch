@@ -12,7 +12,7 @@
 # ever call run-pipeline-batch below, never create-project/add-sample/
 # add-feature):
 #
-#   pylibs run examples/dataset1_multiprocess/setup_project.py
+#   pylibs-stats run examples/dataset1_multiprocess/setup_project.py
 #
 # sbatch won't create --output's directory for you, so make it before your
 # first submission:
@@ -43,7 +43,7 @@ set -uo pipefail
 cd "$SLURM_SUBMIT_DIR" || exit 1
 
 module load python/3.11   # placeholder -- match this to the cluster's module system
-source .venv/bin/activate # or wherever your pylibs virtualenv lives
+source .venv/bin/activate # or wherever your pylibs-stats virtualenv lives
 
 PROJECT_NAME="dataset1_multiprocess_project"
 ROOT="projects/$PROJECT_NAME"
@@ -67,7 +67,7 @@ ROOT="projects/$PROJECT_NAME"
 # which exercises exactly this scenario with real separate processes).
 # Re-submitting this same array job later (e.g. after a time-limit kill) is
 # also safe: already-processed samples are skipped automatically.
-pylibs project run-pipeline-batch "$PROJECT_NAME" \
+pylibs-stats project run-pipeline-batch "$PROJECT_NAME" \
     --root "$ROOT" \
     --worker-index "$SLURM_ARRAY_TASK_ID" \
     --n-workers "$SLURM_ARRAY_TASK_COUNT" \

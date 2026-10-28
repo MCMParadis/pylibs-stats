@@ -1,4 +1,4 @@
-"""Parallel-execution benchmark for pylibs.
+"""Parallel-execution benchmark for pylibs-stats.
 
     python benchmarks/benchmark.py --config benchmarks/config.yaml
 
@@ -10,7 +10,7 @@ for four scenarios:
     C  bootstrap resampling over one sample    (in-process pool)
     D  B and C again, but split across separately launched shard processes
 
-Everything is driven through `pylibs.core.api` and the `pylibs` command line,
+Everything is driven through `pylibs_stats.core.api` and the `pylibs-stats` command line,
 as a user would drive it. No library code is involved beyond that.
 
 Each timed run happens in a fresh interpreter against a fresh, empty project
@@ -150,7 +150,7 @@ def git_state() -> dict:
         ).stdout.strip()
 
     try:
-        version = __import__("pylibs").__version__
+        version = __import__("pylibs_stats").__version__
     except Exception:
         version = "unknown"
     try:
@@ -317,10 +317,17 @@ def run_shards(
     root = prepared["root"]
 
     if scenario == "B":
-        base = ["pylibs", "project", "run-pipeline-batch", "benchmark_project", "--root", root]
+        base = [
+            "pylibs-stats",
+            "project",
+            "run-pipeline-batch",
+            "benchmark_project",
+            "--root",
+            root,
+        ]
     else:
         base = [
-            "pylibs",
+            "pylibs-stats",
             "project",
             "run-bootstrap",
             "benchmark_project",

@@ -1,10 +1,10 @@
 # Parallel-execution benchmark
 
 Measures computation time and speedup against the number of parallel workers,
-for the three things `pylibs` parallelises, plus the separately-launched-process
+for the three things `pylibs-stats` parallelises, plus the separately-launched-process
 mode used for array jobs.
 
-Everything runs through `pylibs.core.api` and the `pylibs` command line, the way
+Everything runs through `pylibs_stats.core.api` and the `pylibs-stats` command line, the way
 a user would drive it. No library code is involved, and none was changed to make
 this possible.
 
@@ -109,7 +109,7 @@ Written to the configured output directory:
   count, plus the measured sequential fraction and Amdahl bound for scenario A.
 - `environment.json`: processor, physical and logical cores, memory, the
   storage backing both the data and the project store, operating system, and
-  the Python, NumPy, SciPy and Zarr versions with the `pylibs` commit.
+  the Python, NumPy, SciPy and Zarr versions with the `pylibs-stats` commit.
 - `speedup.pdf` and `speedup.png`: speedup against workers, single-column width,
   with the ideal line and scenario A's Amdahl bound.
 - `table.tex`: a booktabs table of median time, speedup and efficiency.

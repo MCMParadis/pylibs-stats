@@ -12,7 +12,7 @@
 # Prerequisite (run once, NOT as part of this array job -- array tasks only
 # ever call run-bootstrap below, never add-bootstrap-config/run-pipeline):
 #
-#   pylibs run examples/dataset1_bootstrap_multiprocess/setup_project.py
+#   pylibs-stats run examples/dataset1_bootstrap_multiprocess/setup_project.py
 #
 # sbatch won't create --output's directory for you, so make it before your
 # first submission (setup_project.py above doesn't create it either):
@@ -35,7 +35,7 @@ set -uo pipefail
 cd "$SLURM_SUBMIT_DIR" || exit 1
 
 module load python/3.11   # placeholder -- match this to the cluster's module system
-source .venv/bin/activate # or wherever your pylibs virtualenv lives
+source .venv/bin/activate # or wherever your pylibs-stats virtualenv lives
 
 PROJECT_NAME="dataset1_bootstrap_multiprocess_project"
 ROOT="projects/$PROJECT_NAME"
@@ -56,7 +56,7 @@ BOOTSTRAP_ID="bootstrap001"
 # this scenario with real separate processes). Re-submitting this same
 # array job later (e.g. after a time-limit kill) is also safe: already-
 # completed iterations are skipped automatically, never redone.
-pylibs project run-bootstrap "$PROJECT_NAME" "$SAMPLE_ID" "$BOOTSTRAP_ID" \
+pylibs-stats project run-bootstrap "$PROJECT_NAME" "$SAMPLE_ID" "$BOOTSTRAP_ID" \
     --root "$ROOT" \
     --worker-index "$SLURM_ARRAY_TASK_ID" \
     --n-workers "$SLURM_ARRAY_TASK_COUNT" \

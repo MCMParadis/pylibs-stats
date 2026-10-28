@@ -1,13 +1,13 @@
 #!/bin/bash
 # Runs feature+metrics computation for every registered sample, split across
-# 3 genuinely separate OS processes (not just threads), using `pylibs
+# 3 genuinely separate OS processes (not just threads), using `pylibs-stats
 # project run-pipeline-batch`'s --worker-index/--n-workers sharding (see
 # `pipeline.runner.run_pipeline_batch`'s docstring -- this is the
 # across-sample counterpart to run-bootstrap's own sharding, applied to
 # FeatureStep/SpectrumStatsStep/Distribution1DStep/Distribution2DStep
 # instead of bootstrap iterations). Run setup_project.py once first:
 #
-#   pylibs run examples/dataset1_multiprocess/setup_project.py
+#   pylibs-stats run examples/dataset1_multiprocess/setup_project.py
 #   ./examples/dataset1_multiprocess/run_pipeline_parallel.sh
 #
 # Can be run from any directory. Re-running is safe: any sample already
@@ -32,7 +32,7 @@ N_WORKERS=3
 
 if [ ! -f "$ROOT/registry.json" ]; then
     echo "Error: no project at $ROOT -- run the setup script first:" >&2
-    echo "  pylibs run examples/dataset1_multiprocess/setup_project.py" >&2
+    echo "  pylibs-stats run examples/dataset1_multiprocess/setup_project.py" >&2
     exit 1
 fi
 
@@ -46,7 +46,7 @@ run_worker() {
     # $BASHPID (not $$) is this specific backgrounded subshell's own PID --
     # $$ would still show the top-level script's PID here.
     echo "[worker $worker_index] starting, PID=$BASHPID, $(date +%T.%3N)"
-    if pylibs project run-pipeline-batch "$PROJECT_NAME" \
+    if pylibs-stats project run-pipeline-batch "$PROJECT_NAME" \
         --root "$ROOT" --worker-index "$worker_index" --n-workers "$N_WORKERS" \
         > "$log_file" 2>&1; then
         echo "[worker $worker_index] finished OK, PID=$BASHPID, $(date +%T.%3N)"
@@ -76,4 +76,4 @@ if [ "$any_failed" -ne 0 ]; then
     echo "One or more workers failed -- see above." >&2
     exit 1
 fi
-pylibs project list-samples "$PROJECT_NAME" --root "$ROOT"
+pylibs-stats project list-samples "$PROJECT_NAME" --root "$ROOT"

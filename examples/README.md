@@ -4,7 +4,7 @@ Every script here runs against the real data in `data/dataset1` (7 physical samp
 3 ablation layers), not toy fixtures. Run them **from anywhere** — each resolves paths
 relative to the repo root itself.
 
-- `.py` files are pylibs DSL scripts: `pylibs run examples/<name>.py`
+- `.py` files are pylibs-stats DSL scripts: `pylibs-stats run examples/<name>.py`
 - `.sh` files are executable: `./examples/<name>.sh`
 - `.sbatch` files are SLURM job scripts: `sbatch examples/<dir>/<name>.sbatch`
   (edit `--account` and the `module load` line first — both are placeholders)
@@ -12,7 +12,7 @@ relative to the repo root itself.
 ## Start here
 
 The two walkthroughs below exist in matching pairs: the `.py` drives everything through
-DSL verbs, the `.sh` through `pylibs project ...` commands. Either one alone builds the
+DSL verbs, the `.sh` through `pylibs-stats project ...` commands. Either one alone builds the
 same project — pick whichever matches how you intend to script your own runs.
 
 Each starts by registering **`peak_table.csv`** (below), which is not optional: there is no

@@ -12,7 +12,7 @@ project-scoped log handler and any allocator warm-up from leaking between
 worker counts, so the only thing that differs between two rows of results.csv
 is the number of workers.
 
-Everything here goes through `pylibs.core.api`, the same façade a user calls.
+Everything here goes through `pylibs_stats.core.api`, the same façade a user calls.
 """
 
 from __future__ import annotations
@@ -42,12 +42,12 @@ from pathlib import Path  # noqa: E402
 
 import numpy as np  # noqa: E402
 
-from pylibs.core import api  # noqa: E402
+from pylibs_stats.core import api  # noqa: E402
 
 PROJECT_NAME = "benchmark_project"
-LOG_FILENAME = "pylibs.log"
+LOG_FILENAME = "pylibs_stats.log"
 
-# "2026-09-23 14:02:11,431 DEBUG pylibs.core.pipeline.runner: Running step 'features' ..."
+# "2026-09-23 14:02:11,431 DEBUG pylibs_stats.core.pipeline.runner: Running step 'features' ..."
 _STEP_LINE = re.compile(
     r"^(?P<stamp>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3}) .*Running step '(?P<step>[^']+)'"
 )

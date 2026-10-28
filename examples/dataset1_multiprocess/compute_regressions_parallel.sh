@@ -2,7 +2,7 @@
 # Fits every (CSV column, metric, feature) regression cell -- an all-metrics
 # sweep against dataset1_concentrations.csv, needed to give
 # COMPUTECORRELATIONS a fully populated matrix to read back later -- split
-# across 3 genuinely separate OS processes, using `pylibs project
+# across 3 genuinely separate OS processes, using `pylibs-stats project
 # compute-regressions`'s --worker-index/--n-workers sharding (see
 # `pipeline.regression_run.run_regression_sweep`'s docstring -- the same
 # mechanism as run-bootstrap's/run-pipeline-batch's own sharding, applied to
@@ -10,7 +10,7 @@
 # equivalent) to have completed first -- every sample needs
 # feature+metrics results before any regression can be fit:
 #
-#   pylibs run examples/dataset1_multiprocess/setup_project.py
+#   pylibs-stats run examples/dataset1_multiprocess/setup_project.py
 #   ./examples/dataset1_multiprocess/run_pipeline_parallel.sh
 #   ./examples/dataset1_multiprocess/compute_regressions_parallel.sh
 #
@@ -39,7 +39,7 @@ N_WORKERS=3
 
 if [ ! -f "$ROOT/registry.json" ]; then
     echo "Error: no project at $ROOT -- run the setup + pipeline scripts first:" >&2
-    echo "  pylibs run examples/dataset1_multiprocess/setup_project.py" >&2
+    echo "  pylibs-stats run examples/dataset1_multiprocess/setup_project.py" >&2
     echo "  ./examples/dataset1_multiprocess/run_pipeline_parallel.sh" >&2
     exit 1
 fi
@@ -52,7 +52,7 @@ run_worker() {
     local worker_index=$1
     local log_file="$LOG_DIR/regressions_worker_${worker_index}.log"
     echo "[worker $worker_index] starting, PID=$BASHPID, $(date +%T.%3N)"
-    if pylibs project compute-regressions "$PROJECT_NAME" "$CSV_PATH" \
+    if pylibs-stats project compute-regressions "$PROJECT_NAME" "$CSV_PATH" \
         --root "$ROOT" --all-metrics \
         --worker-index "$worker_index" --n-workers "$N_WORKERS" \
         > "$log_file" 2>&1; then
@@ -83,4 +83,4 @@ if [ "$any_failed" -ne 0 ]; then
     echo "One or more workers failed -- see above." >&2
     exit 1
 fi
-pylibs project list-regressions "$PROJECT_NAME" --root "$ROOT"
+pylibs-stats project list-regressions "$PROJECT_NAME" --root "$ROOT"

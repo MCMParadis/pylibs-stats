@@ -33,9 +33,9 @@ from pathlib import Path
 
 import numpy as np
 
-from pylibs.core import api
-from pylibs.core.io.writers.libs_writer import write_libs_file
-from pylibs.core.project.registry import Registry
+from pylibs_stats.core import api
+from pylibs_stats.core.io.writers.libs_writer import write_libs_file
+from pylibs_stats.core.project.registry import Registry
 
 N_WRITES = 150
 N_READERS = 2
@@ -149,7 +149,7 @@ def test_concurrent_registration_loses_nothing(tmp_path):
 
     This is not the sharded-worker path (those only call
     `mark_sample_processed`, which always re-read under the lock). It is two
-    `pylibs project add-sample` invocations, or two DSL scripts, against one
+    `pylibs-stats project add-sample` invocations, or two DSL scripts, against one
     project."""
     root = tmp_path / "proj"
     libs_path = tmp_path / "sample.libs"

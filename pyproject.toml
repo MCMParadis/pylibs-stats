@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pylibs-stats"
-version = "1.0.2"
+version = "1.1.0"
 description = "Statistical processing of LIBS imaging data"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -68,21 +68,21 @@ ele = [
 ]
 
 [project.scripts]
-pylibs = "pylibs.interfaces.cli.app:app"
+pylibs-stats = "pylibs_stats.interfaces.cli.app:app"
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pylibs"]
+packages = ["src/pylibs_stats"]
 
 [tool.hatch.build.targets.sdist]
 # The 21-file example dataset (~520 MB) is distributed with the repository and
-# the Zenodo deposit, not the PyPI sdist: including it produced a 116 MB
-# archive, over PyPI's 100 MB per-file limit, so the upload is refused.
+# the Zenodo deposit, not the sdist: including it produced a 116 MB archive,
+# over PyPI's 100 MB per-file limit, so an upload there would be refused.
 #
 # The leading slash anchors this to the project root, and matters. A bare
-# "data/" also matches src/pylibs/core/reporting/data/, dropping logo.png --
+# "data/" also matches src/pylibs_stats/core/reporting/data/, dropping the logo --
 # and since `uv build` builds the wheel FROM the sdist, that removes the logo
 # from the wheel too, so every report's cover page fails on a missing resource.
 exclude = ["/data"]
@@ -100,7 +100,7 @@ ignore = ["B008"]  # typer.Option(...) as a default is the standard Typer idiom
 
 [tool.mypy]
 python_version = "3.12"
-packages = ["pylibs"]
+packages = ["pylibs_stats"]
 mypy_path = "src"
 strict = false
 

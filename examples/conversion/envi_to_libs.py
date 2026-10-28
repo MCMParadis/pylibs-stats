@@ -3,8 +3,8 @@
     pip install spectral          # optional, only for this example
     python examples/conversion/envi_to_libs.py path/to/cube.hdr
 
-`spectral` is NOT a pylibs dependency. It is used here only to read the ENVI
-header and cube; pylibs itself never sees the ENVI format. Any other reader
+`spectral` is NOT a pylibs-stats dependency. It is used here only to read the ENVI
+header and cube; pylibs-stats itself never sees the ENVI format. Any other reader
 that yields a NumPy array works the same way.
 
 An ENVI cube is (lines, samples, bands): a spatial row, a spatial column, and
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pylibs.core import api
+from pylibs_stats.core import api
 
 
 def row_blocks(cube, n_rows: int, rows_per_block: int = 4):

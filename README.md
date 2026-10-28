@@ -1,12 +1,19 @@
-# PyLIBS
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/pylibs_stats-logo-white-transparent.png">
+    <img src="docs/assets/pylibs_stats-logo-transparent.png" alt="pylibs-stats" width="420">
+  </picture>
+</p>
+
+# pylibs-stats
 
 [![CI](https://github.com/MCMParadis/pylibs-stats/actions/workflows/ci.yml/badge.svg)](https://github.com/MCMParadis/pylibs-stats/actions/workflows/ci.yml)
 
 Statistical processing of LIBS (Laser-Induced Breakdown Spectroscopy) imaging data. It offers
 a command line interface, a small DSL, and a Python API, all built on one shared façade
-(`pylibs.core.api`).
+(`pylibs_stats.core.api`).
 
-Given a set of raw `.libs` or `.ELE` files, `pylibs` extracts named features, which are either
+Given a set of raw `.libs` or `.ELE` files, `pylibs-stats` extracts named features, which are either
 single peaks or ratio expressions such as `Fe438 / Li670`, and computes per-feature statistics
 and spatial maps. Across a whole project it then correlates or regresses those features against
 an external per-sample property such as a known concentration, and applies a fitted calibration
@@ -15,7 +22,7 @@ to PNG and PDF reports, and every step is resumable and safe to re-run.
 
 ## Supported inputs
 
-`pylibs` reads the open **`.libs`** format: a plain NumPy `.npz` archive holding a
+`pylibs-stats` reads the open **`.libs`** format: a plain NumPy `.npz` archive holding a
 `(n_scans, n_pixels)` spectra array, a wavelength axis, and a JSON metadata object.
 It is uncompressed, it depends on no private code, and it reads in three lines of NumPy:
 
@@ -35,15 +42,15 @@ into a NumPy array, then `write_libs` turns it into a sample that the whole pipe
 ```bash
 # from a CSV spectral matrix: one row per pixel, x,y columns, one column per
 # wavelength, the header giving each column's wavelength
-pylibs write-libs converted.libs --csv matrix.csv
+pylibs-stats write-libs converted.libs --csv matrix.csv
 
 # from arrays, with an explicit raster shape and pixel pitch
-pylibs write-libs converted.libs --spectra cube.npy --wavelengths axis.npy \
+pylibs-stats write-libs converted.libs --spectra cube.npy --wavelengths axis.npy \
     --grid 41x21 --step 0.1
 ```
 
 ```python
-from pylibs.core import api
+from pylibs_stats.core import api
 
 api.write_libs("converted.libs", spectra, wavelengths, grid=(41, 21), step=0.1)
 ```
@@ -53,26 +60,29 @@ into the archive, so converting a scan larger than memory costs one block of RAM
 
 Worked conversions from **ENVI**, **FITS** and a **CSV matrix** are in
 [`examples/conversion/`](examples/conversion/). The ENVI and FITS readers there use `spectral`
-and `astropy`, which are optional packages used only by those examples and never by `pylibs`
+and `astropy`, which are optional packages used only by those examples and never by `pylibs-stats`
 itself.
 
 The vendor **`.ELE`** format is also read directly, through the optional `ele` extra described
-below. The command `pylibs convert-ele-to-libs` turns such a file into a `.libs` one that needs
+below. The command `pylibs-stats convert-ele-to-libs` turns such a file into a `.libs` one that needs
 no private code thereafter. Nothing in the documented workflow requires that extra.
 
 ## Install
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+git clone https://github.com/MCMParadis/pylibs-stats.git
+cd pylibs-stats
+
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"          # editable install + lint/type-check/test tools
 
 pip install -e ".[dev,ele]"      # also pulls in the private .ELE reader, which needs SSH
-                                  # access to a private repo. pylibs works fully without it
+                                  # access to a private repo. pylibs-stats works fully without it
                                   # for .libs files.
 ```
 
 Without access to that private repository, the `ele` extra fails during dependency resolution
-with an SSH authentication error rather than a message about pylibs. Install `.[dev]` instead,
+with an SSH authentication error rather than a message about pylibs-stats. Install `.[dev]` instead,
 which supports the open `.libs` format fully.
 
 Requires Python 3.11+.
@@ -81,28 +91,28 @@ Requires Python 3.11+.
 
 ```bash
 # create a project (default location: ./projects/<name>)
-pylibs project create demo
+pylibs-stats project create demo
 
 # register a peak table. It is copied into the project, so everything below
 # resolves peak ids against the project's own copy. Required once, before
 # any feature is registered. There is no bundled default.
-pylibs project use-peak-table demo examples/peak_table.csv
+pylibs-stats project use-peak-table demo examples/peak_table.csv
 
 # register a raw file as a sample
-pylibs project add-sample demo path/to/sample.libs --sample-name S1
-pylibs project add-samples-from-dir demo path/to/dir   # names taken from the filenames
+pylibs-stats project add-sample demo path/to/sample.libs --sample-name S1
+pylibs-stats project add-samples-from-dir demo path/to/dir   # names taken from the filenames
 
 # register a feature, either a bare peak id or a ratio expression. It is
 # validated against the project's registered peak table.
-pylibs project add-feature demo "B249 / Ca393"
-pylibs project add-element-features demo B C Ca     # every peak the table has for each
+pylibs-stats project add-feature demo "B249 / Ca393"
+pylibs-stats project add-element-features demo B C Ca     # every peak the table has for each
 
 # run the pipeline: feature extraction, spectrum stats, 1D/2D distribution stats
-pylibs project run-pipeline demo sample001
+pylibs-stats project run-pipeline demo sample001
 
 # render (A) a feature map, (B) diagnostic spectra/joint-density plot, and
 # (C) a distribution histogram per feature, plus an optional PDF report
-pylibs project generate-feature-report demo sample001 --save-pdf
+pylibs-stats project generate-feature-report demo sample001 --save-pdf
 ```
 
 Regressions treat the physical sample as the unit of inference by default. Acquisitions that
@@ -112,13 +122,13 @@ The fitted line, R² and MAE are pooled over every acquisition as usual, while t
 band and the permutation test use one point per sample name. Pass
 `--no-group-by-sample-name` to disable it, and note that it does nothing when no name repeats.
 
-From there, `pylibs project --help` lists the full command surface. That covers cross-sample
+From there, `pylibs-stats project --help` lists the full command surface. That covers cross-sample
 correlations and regressions against an external CSV of known properties, applying a fitted
 regression back onto a sample to get a quantification map, and bootstrap resampling for
 uncertainty estimates.
 
-Add `--debug` anywhere, as in `pylibs --debug project run-pipeline ...`, for verbose console
-output and a fuller `<project_root>/pylibs.log`.
+Add `--debug` anywhere, as in `pylibs-stats --debug project run-pipeline ...`, for verbose console
+output and a fuller `<project_root>/pylibs_stats.log`.
 
 ## DSL scripts
 
@@ -148,7 +158,7 @@ GENERATEFEATUREREPORT("demo", "sample001", save_pdf=True)
 ```
 
 ```bash
-pylibs run my_script.py
+pylibs-stats run my_script.py
 ```
 
 ## Packing & snapshots
@@ -159,8 +169,8 @@ single `.zarr.zip`, which stays randomly readable and needs no full unzip, toget
 `.manifest.json` recording the git commit, the project's own `registry.json`, and a checksum.
 
 ```bash
-pylibs project pack demo
-pylibs project verify-pack projects/demo/results.zarr.zip
+pylibs-stats project pack demo
+pylibs-stats project verify-pack projects/demo/results.zarr.zip
 ```
 
 For an iterative workflow, use timestamped snapshots instead. Such a workflow might run the
@@ -170,9 +180,9 @@ that still collides gets a `-1` or `-2` suffix rather than replacing the archive
 there.
 
 ```bash
-pylibs project pack-snapshot demo                       # projects/demo/snapshots/<UTC timestamp>.zarr.zip
-pylibs project list-snapshots demo
-pylibs project use-snapshot demo                        # extracts the most recent snapshot as the
+pylibs-stats project pack-snapshot demo                       # projects/demo/snapshots/<UTC timestamp>.zarr.zip
+pylibs-stats project list-snapshots demo
+pylibs-stats project use-snapshot demo                        # extracts the most recent snapshot as the
                                                           # working results.zarr, along with
                                                           # registry.json and peak_table.csv.
                                                           # Use --timestamp to pick a specific one,

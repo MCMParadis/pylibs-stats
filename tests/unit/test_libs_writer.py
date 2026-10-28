@@ -15,11 +15,11 @@ import numpy as np
 import pytest
 from typer.testing import CliRunner
 
-from pylibs.core import api
-from pylibs.core.exceptions import PylibsError
-from pylibs.core.io.readers.libs_reader import LibsFileReader
-from pylibs.core.reporting.raster import to_raster
-from pylibs.interfaces.cli.app import app
+from pylibs_stats.core import api
+from pylibs_stats.core.exceptions import PylibsError
+from pylibs_stats.core.io.readers.libs_reader import LibsFileReader
+from pylibs_stats.core.reporting.raster import to_raster
+from pylibs_stats.interfaces.cli.app import app
 
 runner = CliRunner()
 
@@ -428,7 +428,7 @@ def test_csv_loader_rejects_a_non_numeric_header(tmp_path):
 
 
 def test_dsl_verb_writes_a_file(tmp_path):
-    script = tmp_path / "convert.pylibs"
+    script = tmp_path / "convert.py"
     script.write_text(
         "import numpy as np\n"
         f"spectra = np.zeros(({NY * NX}, {N_PIXELS})) + 1.0\n"

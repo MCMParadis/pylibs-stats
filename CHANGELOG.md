@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0]
+
+### Changed
+
+- **The import package, the command and the log file are renamed.** Another
+  LIBS package is published under a name that collided with ours, so the
+  project's own identity moves to `pylibs-stats` throughout. This is a
+  breaking change for anyone importing the package or calling the command.
+
+  | | before | after |
+  |---|---|---|
+  | import package | `pylibs` | `pylibs_stats` |
+  | command | `pylibs` | `pylibs-stats` |
+  | façade module | `pylibs.core.api` | `pylibs_stats.core.api` |
+  | per-project log file | `pylibs.log` | `pylibs_stats.log` |
+
+  **Migration, in three lines.** Replace `pylibs.` with `pylibs_stats.` in
+  your imports, replace the `pylibs` command with `pylibs-stats` in your
+  scripts, and reinstall so the old console script is removed. Nothing else
+  changes: the DSL verbs, every function signature and all computed results
+  are untouched.
+
+  **Existing projects keep working, unchanged.** No stored artefact ever
+  carried the package name: `registry.json`, the pack and snapshot manifests
+  and the zarr attributes hold none, so a project or snapshot written by an
+  earlier version loads as it did. The only visible difference is that a
+  project processed by both will hold two log files, the old `pylibs.log`
+  beside the new one. Nothing reads either back.
+
+  No `pylibs` alias or shim is left behind. The collision is the reason for
+  the rename, so keeping the old name available would preserve exactly what
+  it is meant to remove. The distribution name was already `pylibs-stats`
+  and is unchanged, as is the GitHub repository.
+
+- **New logo.** Reports carry the new wordmark on their cover page, and the
+  README shows it in a light and a dark variant.
+
 ## [1.0.2]
 
 ### Fixed
@@ -184,7 +221,7 @@ unchanged.
 
 - **A public writer for the `.libs` format**, so data in any other format can
   be converted into a processable sample with no proprietary step:
-  `api.write_libs`, the `pylibs write-libs` command, and the `WRITELIBS` DSL
+  `api.write_libs`, the `pylibs-stats write-libs` command, and the `WRITELIBS` DSL
   verb. Spectra may be an array, a memory map, or an iterable of row blocks;
   blocks stream straight into the archive, so converting a scan larger than
   memory costs one block of RAM. Geometry comes from a raster shape or from
@@ -200,7 +237,7 @@ unchanged.
 
 - `examples/conversion/`, worked ENVI, FITS and CSV-matrix conversions. The
   ENVI and FITS examples use `spectral` and `astropy`, which are optional and
-  used only there -- no new dependency reaches `pylibs`.
+  used only there -- no new dependency reaches `pylibs-stats`.
 
 ### Unchanged
 

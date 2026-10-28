@@ -14,7 +14,7 @@
 #
 # Prerequisite (run once, NOT part of either array job):
 #
-#   pylibs run examples/dataset1_multiprocess/setup_project.py
+#   pylibs-stats run examples/dataset1_multiprocess/setup_project.py
 #
 # Then submit the whole chain with:
 #
